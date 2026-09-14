@@ -93,7 +93,8 @@ if bool(profile.get('ProvisionedDevices')) != (metadata['profile'] == 'preview')
 expires = profile.get('ExpirationDate')
 if not expires or expires.replace(tzinfo=datetime.timezone.utc) <= datetime.datetime.now(datetime.timezone.utc):
     raise SystemExit('Provisioning profile has expired')
-profile_uuid = str(uuid.UUID(profile['UUID'])).upper()
+profile_uuid = profile['UUID']
+uuid.UUID(profile_uuid)
 (directory / 'signing.json').write_text(json.dumps({'profileUUID': profile_uuid}))
 options = {
     'destination': 'export',
