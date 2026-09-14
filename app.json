@@ -43,9 +43,6 @@
       "favicon": "./assets/favicon.png"
     },
     "extra": {
-      "eas": {
-        "projectId": "add0ac0a-2ac7-4fc4-9937-d2b5a01515c4"
-      },
       "iosAppStoreId": ""
     },
     "owner": "geordangesink"
