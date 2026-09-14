@@ -131,5 +131,5 @@ jobs:
           serviceAccountJsonPlainText: ${{ secrets.GOOGLE_SERVICE_ACCOUNT_JSON }}
           packageName: ${{ steps.metadata.outputs.package_name }}
           releaseFiles: ${{ runner.temp }}/android/Snake.aab
-          track: internal
+          tracks: internal
           status: completed
