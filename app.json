@@ -8,9 +8,7 @@
     "userInterfaceStyle": "dark",
     "backgroundColor": "#001601",
     "plugins": [
-      [
-        "pear-runtime-react-native"
-      ],
+      ["pear-runtime-react-native"],
       [
         "expo-build-properties",
         {
