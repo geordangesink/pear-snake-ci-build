@@ -124,7 +124,7 @@ security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$KEYCHAIN
 KEYCHAINS_CHANGED=true
 security list-keychains -d user -s "$KEYCHAIN_PATH" "${ORIGINAL_KEYCHAINS[@]}"
 
-PROFILE_DIRECTORY="$HOME/Library/MobileDevice/Provisioning Profiles"
+PROFILE_DIRECTORY="$HOME/Library/Developer/Xcode/UserData/Provisioning Profiles"
 mkdir -p "$PROFILE_DIRECTORY"
 PROFILE_PATH="$PROFILE_DIRECTORY/$(basename "$SIGNING_DIR").mobileprovision"
 cp "$SIGNING_DIR/profile.mobileprovision" "$PROFILE_PATH"
