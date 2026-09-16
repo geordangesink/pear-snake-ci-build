@@ -18,7 +18,7 @@ appId: ${APP_ID}
 - assertVisible: Create
 - tapOn: Game Topic
 - inputText: ${output.topic}
-- hideKeyboard
+- pressKey: enter
 - tapOn: Join
 - extendedWaitUntil:
     visible: 'Peers: 0'

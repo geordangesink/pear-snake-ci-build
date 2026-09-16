@@ -9,6 +9,7 @@ module.exports = async function launch(executable, args, env, logPath) {
   })
   const inspector = Promise.withResolvers()
   const devtools = Promise.withResolvers()
+  let disconnectInspector = () => {}
   inspector.promise.catch(() => {})
   devtools.promise.catch(() => {})
   let stderr = ''
@@ -35,16 +36,19 @@ module.exports = async function launch(executable, args, env, logPath) {
   try {
     return await timed(
       (async () => {
-        await prepareArguments(await inspector.promise)
+        disconnectInspector = await prepareArguments(await inspector.promise, log)
+        log('startup: waiting for renderer')
         const browser = await chromium.connectOverCDP(await devtools.promise)
         const context = browser.contexts()[0]
         const page = context.pages()[0] || (await context.waitForEvent('page'))
+        log('startup: renderer connected')
         return {
           page,
           context,
           log,
           async close() {
             await browser.close().catch(() => {})
+            disconnectInspector()
             if (child.exitCode !== null || child.signalCode !== null) return
             const exited = new Promise((resolve) => child.once('exit', resolve))
             child.kill('SIGTERM')
@@ -55,12 +59,14 @@ module.exports = async function launch(executable, args, env, logPath) {
       30_000
     )
   } catch (error) {
+    log(error.stack)
+    disconnectInspector()
     child.kill('SIGKILL')
     throw error
   }
 }
 
-async function prepareArguments(url) {
+async function prepareArguments(url, log) {
   const socket = new WebSocket(url)
   const pending = new Map()
   const paused = Promise.withResolvers()
@@ -89,11 +95,14 @@ async function prepareArguments(url) {
     })
     if (result.exceptionDetails) throw new Error('Could not prepare Snake CLI arguments')
     await send('Debugger.resume')
-  } finally {
+    return () => socket.close()
+  } catch (error) {
     socket.close()
+    throw error
   }
 
   function send(method, params = {}) {
+    log(`inspector: ${method}`)
     const id = ++sequence
     const request = Promise.withResolvers()
     pending.set(id, request)

@@ -43,6 +43,7 @@ test(
       instances.push(instance)
       const { log, page } = app
       instance.page = page
+      await page.setViewportSize({ width: 900, height: 760 })
       page.on('console', (message) => log(`renderer ${message.type()}: ${message.text()}`))
       page.on('pageerror', (error) => {
         instance.errors.push(error.message)
