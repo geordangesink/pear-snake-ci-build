@@ -107,13 +107,13 @@ jobs:
         with:
           ref: ${{ github.sha }}
           path: .snake-ci
-          sparse-checkout: scripts/snapcraft-with-proxy.py
+          sparse-checkout: scripts/snapcraft.py
           sparse-checkout-cone-mode: false
           persist-credentials: false
 
-      - name: Connect Snapcraft containers to the build proxy
+      - name: Configure Snapcraft native downloads
         run: |
-          sudo install -m 755 .snake-ci/scripts/snapcraft-with-proxy.py /usr/local/bin/snapcraft
+          sudo install -m 755 .snake-ci/scripts/snapcraft.py /usr/local/bin/snapcraft
           rm -rf .snake-ci
 
       - name: Build linux x64
@@ -159,13 +159,13 @@ jobs:
         with:
           ref: ${{ github.sha }}
           path: .snake-ci
-          sparse-checkout: scripts/snapcraft-with-proxy.py
+          sparse-checkout: scripts/snapcraft.py
           sparse-checkout-cone-mode: false
           persist-credentials: false
 
-      - name: Connect Snapcraft containers to the build proxy
+      - name: Configure Snapcraft native downloads
         run: |
-          sudo install -m 755 .snake-ci/scripts/snapcraft-with-proxy.py /usr/local/bin/snapcraft
+          sudo install -m 755 .snake-ci/scripts/snapcraft.py /usr/local/bin/snapcraft
           rm -rf .snake-ci
 
       - name: Build linux arm64
@@ -222,6 +222,12 @@ jobs:
           clean-install: true
           version: 24
           node-auth-token: ${{ github.token }}
+
+      - name: Build native DMG dependencies
+        shell: bash
+        run: |
+          sfw="$(command -v sfw)"
+          "$sfw" npm rebuild macos-alias fs-xattr --ignore-scripts=false --foreground-scripts
 
       - name: Setup bare
         uses: holepunchto/actions/setup-bare@v1
@@ -314,6 +320,12 @@ jobs:
           clean-install: true
           version: 24
           node-auth-token: ${{ github.token }}
+
+      - name: Build native DMG dependencies
+        shell: bash
+        run: |
+          sfw="$(command -v sfw)"
+          "$sfw" npm rebuild macos-alias fs-xattr --ignore-scripts=false --foreground-scripts
 
       - name: Setup bare
         uses: holepunchto/actions/setup-bare@v1
