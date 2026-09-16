@@ -13,6 +13,10 @@ on:
           - dev
           - stage
           - production
+      unsigned:
+        description: Build unsigned desktop apps for testing (cannot stage)
+        type: boolean
+        default: false
       upgrade-key:
         description: Value for package.json upgrade field
         type: string
@@ -57,6 +61,11 @@ jobs:
     outputs:
       sha: ${{ steps.source.outputs.sha }}
     steps:
+      - name: Validate build options
+        if: ${{ inputs.unsigned && inputs.run-stage }}
+        run: |
+          echo "::error::Unsigned test builds cannot be staged. Disable unsigned or run-stage."
+          exit 1
       - name: Checkout snake
         uses: actions/checkout@v4
         with:
@@ -92,6 +101,20 @@ jobs:
 
       - name: Setup bare
         uses: holepunchto/actions/setup-bare@v1
+
+      - name: Checkout build tools
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          path: .snake-ci
+          sparse-checkout: scripts/snapcraft-with-proxy.py
+          sparse-checkout-cone-mode: false
+          persist-credentials: false
+
+      - name: Connect Snapcraft containers to the build proxy
+        run: |
+          sudo install -m 755 .snake-ci/scripts/snapcraft-with-proxy.py /usr/local/bin/snapcraft
+          rm -rf .snake-ci
 
       - name: Build linux x64
         uses: holepunchto/actions/make-pear-app@v1
@@ -131,6 +154,20 @@ jobs:
       - name: Setup bare
         uses: holepunchto/actions/setup-bare@v1
 
+      - name: Checkout build tools
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          path: .snake-ci
+          sparse-checkout: scripts/snapcraft-with-proxy.py
+          sparse-checkout-cone-mode: false
+          persist-credentials: false
+
+      - name: Connect Snapcraft containers to the build proxy
+        run: |
+          sudo install -m 755 .snake-ci/scripts/snapcraft-with-proxy.py /usr/local/bin/snapcraft
+          rm -rf .snake-ci
+
       - name: Build linux arm64
         uses: holepunchto/actions/make-pear-app@v1
         with:
@@ -150,6 +187,26 @@ jobs:
     environment: release
     timeout-minutes: 30
     steps:
+      - name: Validate macOS signing secrets
+        if: ${{ !inputs.unsigned }}
+        shell: bash
+        env:
+          MACOS_CERTIFICATE_BASE64: ${{ secrets.MACOS_CERTIFICATE_BASE64 }}
+          MACOS_P12_PASSWORD: ${{ secrets.MACOS_P12_PASSWORD }}
+          MACOS_CODESIGN_IDENTITY: ${{ secrets.MACOS_CODESIGN_IDENTITY }}
+          MACOS_APPLE_ID: ${{ secrets.MACOS_APPLE_ID }}
+          MACOS_APPLE_PASSWORD: ${{ secrets.MACOS_APPLE_PASSWORD }}
+          MACOS_APPLE_TEAM_ID: ${{ secrets.MACOS_APPLE_TEAM_ID }}
+        run: |
+          missing=0
+          for name in MACOS_CERTIFICATE_BASE64 MACOS_P12_PASSWORD MACOS_CODESIGN_IDENTITY MACOS_APPLE_ID MACOS_APPLE_PASSWORD MACOS_APPLE_TEAM_ID; do
+            if [[ -z "${!name}" ]]; then
+              echo "::error::Missing Actions secret $name. Configure desktop signing or select unsigned for a test build."
+              missing=1
+            fi
+          done
+          exit "$missing"
+
       - name: Checkout snake
         uses: actions/checkout@v4
         with:
@@ -170,6 +227,7 @@ jobs:
         uses: holepunchto/actions/setup-bare@v1
 
       - name: Build macos arm64
+        if: ${{ !inputs.unsigned }}
         uses: holepunchto/actions/make-pear-app@v1
         with:
           channel: ${{ env.CHANNEL }}
@@ -185,6 +243,35 @@ jobs:
           macos_apple_password: ${{ secrets.MACOS_APPLE_PASSWORD }}
           macos_apple_team_id: ${{ secrets.MACOS_APPLE_TEAM_ID }}
 
+      - name: Build unsigned macOS app
+        if: ${{ inputs.unsigned }}
+        uses: holepunchto/actions/run-npm-script@v1
+        with:
+          script: make
+        env:
+          NODE_AUTH_TOKEN: ${{ github.token }}
+          NODE_ENV: production
+          UPGRADE_KEY: ${{ inputs.upgrade-key }}
+          MAC_CODESIGN_IDENTITY: ''
+          KEYCHAIN_PROFILE: ''
+
+      - name: Archive unsigned macOS app
+        if: ${{ inputs.unsigned }}
+        run: |
+          ditto -c -k --sequesterRsrc --keepParent \
+            out/*-darwin-arm64/*.app \
+            "$RUNNER_TEMP/snake-darwin-arm64-unsigned-app.zip"
+
+      - name: Upload unsigned macOS artifacts
+        if: ${{ inputs.unsigned }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: snake-darwin-arm64-unsigned
+          path: |
+            out/make/**/*.dmg
+            ${{ runner.temp }}/snake-darwin-arm64-unsigned-app.zip
+          if-no-files-found: error
+
   build-macos-x64:
     needs: prepare
     if: ${{ !cancelled() && !failure() && inputs.run-macos-intel }}
@@ -192,6 +279,26 @@ jobs:
     environment: release
     timeout-minutes: 30
     steps:
+      - name: Validate macOS signing secrets
+        if: ${{ !inputs.unsigned }}
+        shell: bash
+        env:
+          MACOS_CERTIFICATE_BASE64: ${{ secrets.MACOS_CERTIFICATE_BASE64 }}
+          MACOS_P12_PASSWORD: ${{ secrets.MACOS_P12_PASSWORD }}
+          MACOS_CODESIGN_IDENTITY: ${{ secrets.MACOS_CODESIGN_IDENTITY }}
+          MACOS_APPLE_ID: ${{ secrets.MACOS_APPLE_ID }}
+          MACOS_APPLE_PASSWORD: ${{ secrets.MACOS_APPLE_PASSWORD }}
+          MACOS_APPLE_TEAM_ID: ${{ secrets.MACOS_APPLE_TEAM_ID }}
+        run: |
+          missing=0
+          for name in MACOS_CERTIFICATE_BASE64 MACOS_P12_PASSWORD MACOS_CODESIGN_IDENTITY MACOS_APPLE_ID MACOS_APPLE_PASSWORD MACOS_APPLE_TEAM_ID; do
+            if [[ -z "${!name}" ]]; then
+              echo "::error::Missing Actions secret $name. Configure desktop signing or select unsigned for a test build."
+              missing=1
+            fi
+          done
+          exit "$missing"
+
       - name: Checkout snake
         uses: actions/checkout@v4
         with:
@@ -212,6 +319,7 @@ jobs:
         uses: holepunchto/actions/setup-bare@v1
 
       - name: Build macos x64
+        if: ${{ !inputs.unsigned }}
         uses: holepunchto/actions/make-pear-app@v1
         with:
           channel: ${{ env.CHANNEL }}
@@ -227,10 +335,39 @@ jobs:
           macos_apple_password: ${{ secrets.MACOS_APPLE_PASSWORD }}
           macos_apple_team_id: ${{ secrets.MACOS_APPLE_TEAM_ID }}
 
+      - name: Build unsigned macOS app
+        if: ${{ inputs.unsigned }}
+        uses: holepunchto/actions/run-npm-script@v1
+        with:
+          script: make
+        env:
+          NODE_AUTH_TOKEN: ${{ github.token }}
+          NODE_ENV: production
+          UPGRADE_KEY: ${{ inputs.upgrade-key }}
+          MAC_CODESIGN_IDENTITY: ''
+          KEYCHAIN_PROFILE: ''
+
+      - name: Archive unsigned macOS app
+        if: ${{ inputs.unsigned }}
+        run: |
+          ditto -c -k --sequesterRsrc --keepParent \
+            out/*-darwin-x64/*.app \
+            "$RUNNER_TEMP/snake-darwin-x64-unsigned-app.zip"
+
+      - name: Upload unsigned macOS artifacts
+        if: ${{ inputs.unsigned }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: snake-darwin-x64-unsigned
+          path: |
+            out/make/**/*.dmg
+            ${{ runner.temp }}/snake-darwin-x64-unsigned-app.zip
+          if-no-files-found: error
+
   build-win32-x64:
     needs: prepare
     if: ${{ !cancelled() && !failure() && inputs.run-windows-x64 }}
-    runs-on: windows-signer
+    runs-on: ${{ inputs.unsigned && 'windows-latest' || 'windows-signer' }}
     environment: release
     timeout-minutes: 30
     steps:
@@ -254,6 +391,7 @@ jobs:
         uses: holepunchto/actions/setup-bare@v1
 
       - name: Build windows x64
+        if: ${{ !inputs.unsigned }}
         uses: holepunchto/actions/make-pear-app@v1
         with:
           channel: ${{ env.CHANNEL }}
@@ -263,11 +401,32 @@ jobs:
           windows_signing_method: cert_sha1
           windows_cert_sha1: ${{ secrets.WINDOWS_CERT_SHA1 }}
 
+      - name: Build unsigned Windows app
+        if: ${{ inputs.unsigned }}
+        shell: bash
+        env:
+          NODE_AUTH_TOKEN: ${{ github.token }}
+          NODE_ENV: production
+          UPGRADE_KEY: ${{ inputs.upgrade-key }}
+          WINDOWS_SIGN_HOOK: ''
+          WINDOWS_CERT_SHA1: ''
+        run: |
+          sfw="$(command -v sfw)"
+          "$sfw" npm.cmd run make -- --targets=@electron-forge/maker-zip --platform=win32 --arch=x64
+
+      - name: Upload unsigned Windows app
+        if: ${{ inputs.unsigned }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: snake-win32-x64-unsigned
+          path: out/make/zip/win32/x64/*.zip
+          if-no-files-found: error
+
   prepare-stage:
     needs:
       [prepare, build-linux-x64, build-linux-arm, build-macos, build-macos-x64, build-win32-x64]
     if: >-
-      ${{ always() && !cancelled() && inputs.run-stage
+      ${{ always() && !cancelled() && inputs.run-stage && !inputs.unsigned
         && needs.prepare.result == 'success'
         && (!inputs.run-linux-x64 || needs.build-linux-x64.result == 'success')
         && (!inputs.run-linux-arm || needs.build-linux-arm.result == 'success')
