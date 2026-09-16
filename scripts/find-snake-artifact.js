@@ -31,7 +31,7 @@ if (process.platform === 'linux') {
     [
       '-NoProfile',
       '-Command',
-      '[System.IO.Compression.ZipFile]::ExtractToDirectory($env.SNAKE_ARCHIVE, $env.SNAKE_EXTRACTED)'
+      '[System.IO.Compression.ZipFile]::ExtractToDirectory($env:SNAKE_ARCHIVE, $env:SNAKE_EXTRACTED)'
     ],
     {
       env: { ...process.env, SNAKE_ARCHIVE: archive, SNAKE_EXTRACTED: extracted }
