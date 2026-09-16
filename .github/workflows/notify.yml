@@ -1,0 +1,51 @@
+name: Notify Snake Build
+
+on:
+  workflow_call:
+    inputs:
+      title:
+        required: true
+        type: string
+      ref:
+        required: true
+        type: string
+      channel:
+        required: true
+        type: string
+      results:
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  notify:
+    runs-on: ubuntu-latest
+    environment: release
+    timeout-minutes: 5
+    steps:
+      - name: Notify Slack
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+          TITLE: ${{ inputs.title }}
+          REF: ${{ inputs.ref }}
+          CHANNEL: ${{ inputs.channel }}
+          RESULTS: ${{ inputs.results }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          message="$(jq -nr \
+            --arg title "$TITLE" --arg ref "$REF" --arg channel "$CHANNEL" \
+            --arg url "$RUN_URL" --argjson results "$RESULTS" '
+            {success: "✅", failure: "❌", cancelled: "🚫", skipped: "⏭️"} as $icons |
+            "🐍 *\($title)* — \($channel) @ \($ref)\n" +
+            ($results | to_entries | map(
+              "\($icons[.value.result] // "❔") \(.key) — \(.value.result)" +
+              (if (.value.outputs["pr-url"] // "") != "" then
+                "\n<\(.value.outputs["pr-url"])|Stage PR>" else "" end)
+            ) | join("\n")) + "\n\n<\($url)|View workflow run>"
+          ')"
+          jq -n --arg text "$message" '{text: $text}' > "$RUNNER_TEMP/slack.json"
+          curl --fail-with-body --silent --show-error \
+            -H 'Content-type: application/json' \
+            --data-binary "@$RUNNER_TEMP/slack.json" "$SLACK_WEBHOOK_URL"

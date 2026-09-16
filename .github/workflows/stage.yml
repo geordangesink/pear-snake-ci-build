@@ -1,0 +1,75 @@
+name: Stage Snake
+
+on:
+  workflow_call:
+    inputs:
+      artifact:
+        required: true
+        type: string
+      namespace:
+        required: true
+        type: string
+      dry-run:
+        default: false
+        type: boolean
+    outputs:
+      pr-url:
+        value: ${{ jobs.stage.outputs.pr-url }}
+
+permissions:
+  contents: write
+  pull-requests: write
+  actions: read
+
+jobs:
+  stage:
+    runs-on: macos-latest
+    environment: release
+    timeout-minutes: 20
+    concurrency:
+      group: pear-ci-snapshot
+      cancel-in-progress: false
+    outputs:
+      pr-url: ${{ steps.pear-ci.outputs.pr-url }}
+    steps:
+      - name: Create GitHub App token
+        id: build-app-token
+        if: ${{ vars.BUILD_APP_ID != '' }}
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1
+        with:
+          app-id: ${{ vars.BUILD_APP_ID }}
+          private-key: ${{ secrets.BUILD_APP_PRIVATE_KEY }}
+          permission-contents: write
+          permission-pull-requests: write
+
+      - name: Checkout CI repository
+        uses: actions/checkout@v4
+        with:
+          token: ${{ steps.build-app-token.outputs.token || github.token }}
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
+      - name: Download stage artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: ${{ inputs.artifact }}
+          path: out/artifacts
+
+      - name: Extract stage artifact
+        run: |
+          mkdir -p out/stage
+          tar -xzf out/artifacts/stage.tar.gz -C out/stage
+
+      - name: Stage with pear-ci
+        id: pear-ci
+        uses: holepunchto/actions/pear-ci@3ff649db70c90ceb33f6fb3f4132e74f0a97f3a7
+        with:
+          namespace: ${{ inputs.namespace }}
+          primary-key: ${{ secrets.PEAR_PRIMARY_KEY }}
+          target: ./out/stage
+          dry-run: ${{ inputs.dry-run }}
+          github-token: ${{ steps.build-app-token.outputs.token || github.token }}
+          app-slug: ${{ steps.build-app-token.outputs.app-slug }}

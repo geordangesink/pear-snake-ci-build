@@ -1,0 +1,155 @@
+name: Build Snake Mobile Updates
+run-name: Snake mobile updates / ${{ inputs.channel }} / ${{ inputs.ref }}
+
+on:
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: snake-mobile branch, tag, or commit
+        type: string
+        default: main
+      channel:
+        type: choice
+        default: dev
+        options:
+          - dev
+          - stage
+          - production
+      upgrade-key:
+        description: Optional package.json upgrade override
+        type: string
+      run-stage:
+        type: boolean
+        default: false
+      stage-dry-run:
+        type: boolean
+        default: false
+      notify:
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+  packages: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    environment: release
+    timeout-minutes: 30
+    outputs:
+      source-sha: ${{ steps.source.outputs.sha }}
+    steps:
+      - name: Create source access token
+        id: source-token
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1
+        with:
+          app-id: ${{ vars.BUILD_APP_ID }}
+          private-key: ${{ secrets.BUILD_APP_PRIVATE_KEY }}
+          owner: holepunchto
+          repositories: snake-mobile
+          permission-contents: read
+
+      - name: Checkout snake-mobile
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        with:
+          repository: holepunchto/snake-mobile
+          ref: ${{ inputs.ref }}
+          token: ${{ steps.source-token.outputs.token }}
+          persist-credentials: false
+
+      - name: Set up Node.js
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Set upgrade key
+        if: ${{ inputs.upgrade-key != '' }}
+        env:
+          UPGRADE_KEY: ${{ inputs.upgrade-key }}
+        run: |
+          node <<'NODE'
+          const fs = require('node:fs')
+          const pkg = JSON.parse(fs.readFileSync('package.json', 'utf8'))
+          pkg.upgrade = process.env.UPGRADE_KEY
+          fs.writeFileSync('package.json', JSON.stringify(pkg, null, 2) + '\n')
+          NODE
+
+      - name: Record source
+        id: source
+        env:
+          SOURCE_REF: ${{ inputs.ref }}
+          CHANNEL: ${{ inputs.channel }}
+        run: |
+          node <<'NODE'
+          const fs = require('node:fs')
+          const path = require('node:path')
+          const { execFileSync } = require('node:child_process')
+          const sha = execFileSync('git', ['rev-parse', 'HEAD'], { encoding: 'utf8' }).trim()
+          const pkg = JSON.parse(fs.readFileSync('package.json', 'utf8'))
+          const metadata = {
+            repository: 'holepunchto/snake-mobile',
+            ref: process.env.SOURCE_REF,
+            sha,
+            version: pkg.version,
+            upgrade: pkg.upgrade,
+            channel: process.env.CHANNEL,
+            buildRepository: process.env.GITHUB_REPOSITORY,
+            buildRunId: process.env.GITHUB_RUN_ID
+          }
+          fs.writeFileSync(path.join(process.env.RUNNER_TEMP, 'source.json'), JSON.stringify(metadata, null, 2) + '\n')
+          fs.appendFileSync(process.env.GITHUB_OUTPUT, `sha=${sha}\n`)
+          NODE
+
+      - name: Build mobile updates
+        env:
+          CI: 'true'
+          npm_config_ignore_scripts: 'true'
+        run: npm run update
+
+      - name: Package stage artifact
+        run: tar -czf "$RUNNER_TEMP/stage.tar.gz" -C dist .
+
+      - name: Upload stage artifact
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: snake-mobile-stage
+          path: ${{ runner.temp }}/stage.tar.gz
+          if-no-files-found: error
+
+      - name: Upload source metadata
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: snake-mobile-source
+          path: ${{ runner.temp }}/source.json
+          if-no-files-found: error
+
+  stage:
+    needs: build
+    if: ${{ inputs.run-stage }}
+    permissions:
+      contents: write
+      packages: read
+      pull-requests: write
+      actions: read
+    uses: ./.github/workflows/stage.yml
+    with:
+      artifact: snake-mobile-stage
+      namespace: snake-mobile-${{ inputs.channel }}-v1
+      dry-run: ${{ inputs.stage-dry-run }}
+    secrets: inherit
+
+  notify:
+    needs: [build, stage]
+    if: ${{ always() && !cancelled() && inputs.notify }}
+    uses: ./.github/workflows/notify.yml
+    secrets: inherit
+    with:
+      title: Snake mobile updates
+      ref: ${{ inputs.ref }}
+      channel: ${{ inputs.channel }}
+      results: ${{ toJSON(needs) }}

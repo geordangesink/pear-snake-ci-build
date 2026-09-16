@@ -1,0 +1,351 @@
+name: Build Snake
+
+on:
+  workflow_dispatch:
+    inputs:
+      ref:
+        type: string
+        default: main
+      channel:
+        type: choice
+        default: dev
+        options:
+          - dev
+          - stage
+          - production
+      upgrade-key:
+        description: Value for package.json upgrade field
+        type: string
+        default: ''
+      run-linux-arm:
+        type: boolean
+        default: false
+      run-linux-x64:
+        type: boolean
+        default: false
+      run-macos:
+        type: boolean
+        default: false
+      run-macos-intel:
+        type: boolean
+        default: false
+      run-windows-x64:
+        type: boolean
+        default: false
+      run-stage:
+        type: boolean
+        default: false
+      stage-dry-run:
+        type: boolean
+        default: false
+      notify:
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+  packages: read
+
+env:
+  CHANNEL: ${{ inputs.channel }}
+
+jobs:
+  prepare:
+    if: ${{ inputs.run-linux-x64 || inputs.run-linux-arm || inputs.run-macos || inputs.run-macos-intel || inputs.run-windows-x64 }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      sha: ${{ steps.source.outputs.sha }}
+    steps:
+      - name: Checkout snake
+        uses: actions/checkout@v4
+        with:
+          repository: holepunchto/snake
+          ref: ${{ inputs.ref }}
+          persist-credentials: false
+      - name: Resolve source commit
+        id: source
+        run: echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+
+  build-linux-x64:
+    needs: prepare
+    if: ${{ !cancelled() && !failure() && inputs.run-linux-x64 }}
+    runs-on: ubuntu-latest
+    environment: release
+    timeout-minutes: 30
+    steps:
+      - name: Checkout snake
+        uses: actions/checkout@v4
+        with:
+          repository: holepunchto/snake
+          ref: ${{ needs.prepare.outputs.sha }}
+          token: ${{ github.token }}
+          persist-credentials: false
+
+      - name: Install dependencies
+        uses: holepunchto/actions/node-base-extended@v1
+        with:
+          allow-git: all
+          clean-install: true
+          version: 24
+          node-auth-token: ${{ github.token }}
+
+      - name: Setup bare
+        uses: holepunchto/actions/setup-bare@v1
+
+      - name: Build linux x64
+        uses: holepunchto/actions/make-pear-app@v1
+        with:
+          channel: ${{ env.CHANNEL }}
+          upgrade_key: ${{ inputs.upgrade-key }}
+          linux_appimage: '*.AppImage'
+          linux_appimage_artifact_name: snake-linux-x64-appimage
+          linux_snap: '*.snap'
+          linux_snap_artifact_name: snake-linux-x64-snap
+          linux_flatpak: '*_flatpak.tar.gz'
+          linux_flatpak_artifact_name: snake-linux-x64-flatpak
+
+  build-linux-arm:
+    needs: prepare
+    if: ${{ !cancelled() && !failure() && inputs.run-linux-arm }}
+    runs-on: ubuntu-24.04-arm
+    environment: release
+    timeout-minutes: 30
+    steps:
+      - name: Checkout snake
+        uses: actions/checkout@v4
+        with:
+          repository: holepunchto/snake
+          ref: ${{ needs.prepare.outputs.sha }}
+          token: ${{ github.token }}
+          persist-credentials: false
+
+      - name: Install dependencies
+        uses: holepunchto/actions/node-base-extended@v1
+        with:
+          allow-git: all
+          clean-install: true
+          version: 24
+          node-auth-token: ${{ github.token }}
+
+      - name: Setup bare
+        uses: holepunchto/actions/setup-bare@v1
+
+      - name: Build linux arm64
+        uses: holepunchto/actions/make-pear-app@v1
+        with:
+          channel: ${{ env.CHANNEL }}
+          upgrade_key: ${{ inputs.upgrade-key }}
+          linux_appimage: '*.AppImage'
+          linux_appimage_artifact_name: snake-linux-arm64-appimage
+          linux_snap: '*.snap'
+          linux_snap_artifact_name: snake-linux-arm64-snap
+          linux_flatpak: '*_flatpak.tar.gz'
+          linux_flatpak_artifact_name: snake-linux-arm64-flatpak
+
+  build-macos:
+    needs: prepare
+    if: ${{ !cancelled() && !failure() && inputs.run-macos }}
+    runs-on: macos-latest
+    environment: release
+    timeout-minutes: 30
+    steps:
+      - name: Checkout snake
+        uses: actions/checkout@v4
+        with:
+          repository: holepunchto/snake
+          ref: ${{ needs.prepare.outputs.sha }}
+          token: ${{ github.token }}
+          persist-credentials: false
+
+      - name: Install dependencies
+        uses: holepunchto/actions/node-base-extended@v1
+        with:
+          allow-git: all
+          clean-install: true
+          version: 24
+          node-auth-token: ${{ github.token }}
+
+      - name: Setup bare
+        uses: holepunchto/actions/setup-bare@v1
+
+      - name: Build macos arm64
+        uses: holepunchto/actions/make-pear-app@v1
+        with:
+          channel: ${{ env.CHANNEL }}
+          upgrade_key: ${{ inputs.upgrade-key }}
+          macos_dmg: '*.dmg'
+          macos_dmg_artifact_name: snake-darwin-arm64-dmg
+          macos_app: snake-darwin-arm64-app.zip
+          macos_certificate_base64: ${{ secrets.MACOS_CERTIFICATE_BASE64 }}
+          macos_p12_password: ${{ secrets.MACOS_P12_PASSWORD }}
+          macos_codesign_identity: ${{ secrets.MACOS_CODESIGN_IDENTITY }}
+          macos_notarization_method: apple_id_password
+          macos_apple_id: ${{ secrets.MACOS_APPLE_ID }}
+          macos_apple_password: ${{ secrets.MACOS_APPLE_PASSWORD }}
+          macos_apple_team_id: ${{ secrets.MACOS_APPLE_TEAM_ID }}
+
+  build-macos-x64:
+    needs: prepare
+    if: ${{ !cancelled() && !failure() && inputs.run-macos-intel }}
+    runs-on: macos-26-intel
+    environment: release
+    timeout-minutes: 30
+    steps:
+      - name: Checkout snake
+        uses: actions/checkout@v4
+        with:
+          repository: holepunchto/snake
+          ref: ${{ needs.prepare.outputs.sha }}
+          token: ${{ github.token }}
+          persist-credentials: false
+
+      - name: Install dependencies
+        uses: holepunchto/actions/node-base-extended@v1
+        with:
+          allow-git: all
+          clean-install: true
+          version: 24
+          node-auth-token: ${{ github.token }}
+
+      - name: Setup bare
+        uses: holepunchto/actions/setup-bare@v1
+
+      - name: Build macos x64
+        uses: holepunchto/actions/make-pear-app@v1
+        with:
+          channel: ${{ env.CHANNEL }}
+          upgrade_key: ${{ inputs.upgrade-key }}
+          macos_dmg: '*.dmg'
+          macos_dmg_artifact_name: snake-darwin-x64-dmg
+          macos_app: snake-darwin-x64-app.zip
+          macos_certificate_base64: ${{ secrets.MACOS_CERTIFICATE_BASE64 }}
+          macos_p12_password: ${{ secrets.MACOS_P12_PASSWORD }}
+          macos_codesign_identity: ${{ secrets.MACOS_CODESIGN_IDENTITY }}
+          macos_notarization_method: apple_id_password
+          macos_apple_id: ${{ secrets.MACOS_APPLE_ID }}
+          macos_apple_password: ${{ secrets.MACOS_APPLE_PASSWORD }}
+          macos_apple_team_id: ${{ secrets.MACOS_APPLE_TEAM_ID }}
+
+  build-win32-x64:
+    needs: prepare
+    if: ${{ !cancelled() && !failure() && inputs.run-windows-x64 }}
+    runs-on: windows-signer
+    environment: release
+    timeout-minutes: 30
+    steps:
+      - name: Checkout snake
+        uses: actions/checkout@v4
+        with:
+          repository: holepunchto/snake
+          ref: ${{ needs.prepare.outputs.sha }}
+          token: ${{ github.token }}
+          persist-credentials: false
+
+      - name: Install dependencies
+        uses: holepunchto/actions/node-base-extended@v1
+        with:
+          allow-git: all
+          clean-install: true
+          version: 24
+          node-auth-token: ${{ github.token }}
+
+      - name: Setup bare
+        uses: holepunchto/actions/setup-bare@v1
+
+      - name: Build windows x64
+        uses: holepunchto/actions/make-pear-app@v1
+        with:
+          channel: ${{ env.CHANNEL }}
+          upgrade_key: ${{ inputs.upgrade-key }}
+          windows_msix: '*.msix'
+          windows_msix_artifact_name: snake-win32-x64-msix
+          windows_signing_method: cert_sha1
+          windows_cert_sha1: ${{ secrets.WINDOWS_CERT_SHA1 }}
+
+  prepare-stage:
+    needs:
+      [prepare, build-linux-x64, build-linux-arm, build-macos, build-macos-x64, build-win32-x64]
+    if: >-
+      ${{ always() && !cancelled() && inputs.run-stage
+        && needs.prepare.result == 'success'
+        && (!inputs.run-linux-x64 || needs.build-linux-x64.result == 'success')
+        && (!inputs.run-linux-arm || needs.build-linux-arm.result == 'success')
+        && (!inputs.run-macos || needs.build-macos.result == 'success')
+        && (!inputs.run-macos-intel || needs.build-macos-x64.result == 'success')
+        && (!inputs.run-windows-x64 || needs.build-win32-x64.result == 'success') }}
+    runs-on: macos-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout CI repository
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Checkout snake source
+        uses: actions/checkout@v4
+        with:
+          repository: holepunchto/snake
+          ref: ${{ needs.prepare.outputs.sha }}
+          path: snake-source
+          persist-credentials: false
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
+      - name: Download build artifacts
+        uses: actions/download-artifact@v4
+        with:
+          pattern: snake-*
+          path: out/artifacts
+
+      - name: Build stage artifact
+        env:
+          UPGRADE_KEY: ${{ inputs.upgrade-key }}
+        run: |
+          node scripts/build-stage-artifact.js
+          tar -czf "$RUNNER_TEMP/stage.tar.gz" -C out/snake-stage .
+
+      - name: Upload stage artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: snake-stage
+          path: ${{ runner.temp }}/stage.tar.gz
+          if-no-files-found: error
+
+  stage:
+    needs: prepare-stage
+    if: ${{ !cancelled() && needs.prepare-stage.result == 'success' }}
+    permissions:
+      contents: write
+      pull-requests: write
+      actions: read
+    uses: ./.github/workflows/stage.yml
+    secrets: inherit
+    with:
+      artifact: snake-stage
+      namespace: ${{ format('snake-{0}-v1', inputs.channel) }}
+      dry-run: ${{ inputs.stage-dry-run }}
+
+  notify:
+    needs:
+      [
+        prepare,
+        build-linux-x64,
+        build-linux-arm,
+        build-macos,
+        build-macos-x64,
+        build-win32-x64,
+        prepare-stage,
+        stage
+      ]
+    if: ${{ always() && !cancelled() && inputs.notify }}
+    uses: ./.github/workflows/notify.yml
+    secrets: inherit
+    with:
+      title: Snake desktop build
+      ref: ${{ inputs.ref }}
+      channel: ${{ inputs.channel }}
+      results: ${{ toJSON(needs) }}

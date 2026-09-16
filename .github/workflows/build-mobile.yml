@@ -1,0 +1,326 @@
+name: Build Snake Mobile
+run-name: Build Snake Mobile · ${{ inputs.ref }} · ${{ inputs.profile }}
+
+on:
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: snake-mobile branch, tag, or commit
+        required: true
+        default: main
+        type: string
+      profile:
+        description: Distribution profile
+        required: true
+        default: production
+        type: choice
+        options:
+          - production
+          - preview
+      build_ios:
+        description: Build iOS
+        required: true
+        default: true
+        type: boolean
+      build_android:
+        description: Build Android
+        required: true
+        default: true
+        type: boolean
+      build_number:
+        description: Optional build number (defaults to run number + BUILD_NUMBER_OFFSET)
+        required: false
+        type: string
+      publish:
+        description: Publish successful production builds to TestFlight / Google Play internal testing
+        required: true
+        default: false
+        type: boolean
+      notify:
+        description: Send a Slack build notification
+        required: true
+        default: false
+        type: boolean
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: mobile-build-${{ github.ref }}
+  cancel-in-progress: false
+
+defaults:
+  run:
+    shell: bash
+
+env:
+  CI: 'true'
+  BUILD_PROFILE: ${{ inputs.profile }}
+  BUILD_NUMBER: ${{ inputs.build_number }}
+  SOURCE_REPOSITORY: holepunchto/snake-mobile
+  SOURCE_REF: ${{ inputs.ref }}
+
+jobs:
+  source:
+    name: Resolve source
+    if: ${{ inputs.build_ios || inputs.build_android }}
+    runs-on: ubuntu-24.04
+    environment: release
+    timeout-minutes: 5
+    outputs:
+      commit: ${{ steps.source.outputs.commit }}
+    steps:
+      - name: Create source access token
+        id: source-token
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1
+        with:
+          app-id: ${{ vars.BUILD_APP_ID }}
+          private-key: ${{ secrets.BUILD_APP_PRIVATE_KEY }}
+          owner: holepunchto
+          repositories: snake-mobile
+          permission-contents: read
+
+      - name: Checkout snake-mobile
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        with:
+          repository: holepunchto/snake-mobile
+          ref: ${{ inputs.ref }}
+          token: ${{ steps.source-token.outputs.token }}
+          persist-credentials: false
+
+      - name: Resolve source commit
+        id: source
+        run: |
+          test -f scripts/prepare-build.js
+          test -f scripts/build-ios.sh
+          test -f scripts/build-android.sh
+          echo "commit=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+
+  build-ios:
+    name: Build iOS
+    needs: source
+    if: ${{ inputs.build_ios }}
+    runs-on: macos-26
+    environment: release
+    timeout-minutes: 90
+    env:
+      SOURCE_COMMIT: ${{ needs.source.outputs.commit }}
+      DEVELOPER_DIR: /Applications/Xcode_26.2.app/Contents/Developer
+      APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+      BUILD_CERTIFICATE_BASE64: ${{ secrets.BUILD_CERTIFICATE_BASE64 }}
+      P12_PASSWORD: ${{ secrets.P12_PASSWORD }}
+      IOS_PROVISIONING_PROFILE_BASE64: ${{ secrets[inputs.profile == 'production' && 'IOS_PROVISIONING_PROFILE_BASE64' || 'IOS_ADHOC_PROVISIONING_PROFILE_BASE64'] }}
+    steps:
+      - name: Create source access token
+        id: source-token
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1
+        with:
+          app-id: ${{ vars.BUILD_APP_ID }}
+          private-key: ${{ secrets.BUILD_APP_PRIVATE_KEY }}
+          owner: holepunchto
+          repositories: snake-mobile
+          permission-contents: read
+
+      - name: Checkout snake-mobile
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        with:
+          repository: holepunchto/snake-mobile
+          ref: ${{ needs.source.outputs.commit }}
+          token: ${{ steps.source-token.outputs.token }}
+          persist-credentials: false
+
+      - name: Checkout build configuration
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        with:
+          ref: ${{ github.sha }}
+          path: ci
+          persist-credentials: false
+
+      - uses: ./ci/.github/actions/setup-mobile-build
+        with:
+          platform: ios
+
+      - name: Install Pods
+        working-directory: ios
+        run: pod install
+
+      - name: Archive and export signed IPA
+        run: bash scripts/build-ios.sh
+
+      - name: Record build source
+        run: |
+          node <<'NODE'
+          const fs = require('node:fs')
+          const file = 'dist/ios/build-metadata.json'
+          const metadata = JSON.parse(fs.readFileSync(file, 'utf8'))
+          Object.assign(metadata, {
+            repository: process.env.SOURCE_REPOSITORY,
+            ref: process.env.SOURCE_REF,
+            commit: process.env.SOURCE_COMMIT,
+            runId: process.env.GITHUB_RUN_ID
+          })
+          fs.writeFileSync(file, JSON.stringify(metadata, null, 2) + '\n')
+          NODE
+
+      - name: Upload iOS build
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: mobile-ios-${{ inputs.profile }}
+          overwrite: true
+          path: |
+            dist/ios/Snake.ipa
+            dist/ios/build-metadata.json
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Upload iOS build logs
+        if: ${{ failure() }}
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: mobile-ios-logs
+          overwrite: true
+          path: dist/ios/*.log
+          retention-days: 14
+
+  build-android:
+    name: Build Android
+    needs: source
+    if: ${{ inputs.build_android }}
+    runs-on: ubuntu-24.04
+    environment: release
+    timeout-minutes: 90
+    env:
+      SOURCE_COMMIT: ${{ needs.source.outputs.commit }}
+      ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+      ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+      ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+      ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+    steps:
+      - name: Create source access token
+        id: source-token
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1
+        with:
+          app-id: ${{ vars.BUILD_APP_ID }}
+          private-key: ${{ secrets.BUILD_APP_PRIVATE_KEY }}
+          owner: holepunchto
+          repositories: snake-mobile
+          permission-contents: read
+
+      - name: Checkout snake-mobile
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        with:
+          repository: holepunchto/snake-mobile
+          ref: ${{ needs.source.outputs.commit }}
+          token: ${{ steps.source-token.outputs.token }}
+          persist-credentials: false
+
+      - name: Checkout build configuration
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        with:
+          ref: ${{ github.sha }}
+          path: ci
+          persist-credentials: false
+
+      - uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - uses: android-actions/setup-android@9fc6c4e9069bf8d3d10b2204b1fb8f6ef7065407
+        with:
+          packages: platform-tools cmake;3.22.1
+
+      - uses: ./ci/.github/actions/setup-mobile-build
+        with:
+          platform: android
+
+      - uses: gradle/actions/setup-gradle@0b6dd653ba04f4f93bf581ec31e66cbd7dcb644d
+
+      - name: Build signed Android artifacts
+        run: bash scripts/build-android.sh
+
+      - name: Record build source
+        run: |
+          node <<'NODE'
+          const fs = require('node:fs')
+          const file = 'dist/android/build-metadata.json'
+          const metadata = JSON.parse(fs.readFileSync(file, 'utf8'))
+          Object.assign(metadata, {
+            repository: process.env.SOURCE_REPOSITORY,
+            ref: process.env.SOURCE_REF,
+            commit: process.env.SOURCE_COMMIT,
+            runId: process.env.GITHUB_RUN_ID
+          })
+          fs.writeFileSync(file, JSON.stringify(metadata, null, 2) + '\n')
+          NODE
+
+      - name: Upload Android build
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: mobile-android-${{ inputs.profile }}
+          overwrite: true
+          path: |
+            dist/android/Snake.apk
+            dist/android/*.aab
+            dist/android/build-metadata.json
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Upload Android build logs
+        if: ${{ failure() }}
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: mobile-android-logs
+          overwrite: true
+          path: dist/android/*.log
+          retention-days: 14
+
+  publish:
+    name: Publish
+    needs: [build-ios, build-android]
+    if: >-
+      ${{ !cancelled() && inputs.publish && inputs.profile == 'production' &&
+          needs.build-ios.result != 'failure' && needs.build-android.result != 'failure' &&
+          (needs.build-ios.result == 'success' || needs.build-android.result == 'success') }}
+    uses: ./.github/workflows/publish-mobile.yml
+    secrets: inherit
+    with:
+      build_run_id: ${{ format('{0}', github.run_id) }}
+      submit_ios: ${{ needs.build-ios.result == 'success' }}
+      submit_android: ${{ needs.build-android.result == 'success' }}
+
+  notify:
+    needs: [source, build-ios, build-android, publish]
+    if: ${{ always() && !cancelled() && inputs.notify }}
+    uses: ./.github/workflows/notify.yml
+    secrets: inherit
+    with:
+      title: Snake mobile build
+      ref: ${{ inputs.ref }}
+      channel: ${{ inputs.profile }}
+      results: ${{ toJSON(needs) }}
+
+  build-summary:
+    name: Build Summary
+    if: ${{ always() }}
+    needs: [source, build-ios, build-android]
+    runs-on: ubuntu-24.04
+    env:
+      SOURCE_COMMIT: ${{ needs.source.outputs.commit }}
+      IOS_RESULT: ${{ needs.build-ios.result }}
+      ANDROID_RESULT: ${{ needs.build-android.result }}
+      PUBLISH_REQUESTED: ${{ inputs.publish }}
+    steps:
+      - name: Summarize build artifacts
+        run: |
+          {
+            echo "## Snake mobile builds"
+            echo "- Source: $SOURCE_REPOSITORY @ $SOURCE_REF ($SOURCE_COMMIT)"
+            echo "- iOS: $IOS_RESULT"
+            echo "- Android: $ANDROID_RESULT"
+            echo "- Profile: $BUILD_PROFILE"
+            echo "- Build run ID: $GITHUB_RUN_ID"
+            echo "- Publish requested: $PUBLISH_REQUESTED"
+            echo "Download the signed binaries and build metadata from this run's artifacts."
+          } >> "$GITHUB_STEP_SUMMARY"
