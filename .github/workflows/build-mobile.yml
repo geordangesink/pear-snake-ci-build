@@ -58,7 +58,7 @@ env:
   CI: 'true'
   BUILD_PROFILE: ${{ inputs.profile }}
   BUILD_NUMBER: ${{ inputs.build_number }}
-  SOURCE_REPOSITORY: holepunchto/snake-mobile
+  SOURCE_REPOSITORY: geordangesink/snake-mobile
   SOURCE_REF: ${{ inputs.ref }}
 
 jobs:
@@ -74,7 +74,7 @@ jobs:
       - name: Checkout snake-mobile
         uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
         with:
-          repository: holepunchto/snake-mobile
+          repository: geordangesink/snake-mobile
           ref: ${{ inputs.ref }}
           token: ${{ github.token }}
           persist-credentials: false
@@ -105,7 +105,7 @@ jobs:
       - name: Checkout snake-mobile
         uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
         with:
-          repository: holepunchto/snake-mobile
+          repository: geordangesink/snake-mobile
           ref: ${{ needs.source.outputs.commit }}
           token: ${{ github.token }}
           persist-credentials: false
@@ -180,7 +180,7 @@ jobs:
       - name: Checkout snake-mobile
         uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
         with:
-          repository: holepunchto/snake-mobile
+          repository: geordangesink/snake-mobile
           ref: ${{ needs.source.outputs.commit }}
           token: ${{ github.token }}
           persist-credentials: false
