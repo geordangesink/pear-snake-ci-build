@@ -1,0 +1,29 @@
+appId: ${APP_ID}
+---
+- launchApp:
+    clearState: true
+- waitForAnimationToEnd:
+    timeout: 10000
+- extendedWaitUntil:
+    visible: Create
+    timeout: 60000
+- tapOn: Create
+- extendedWaitUntil:
+    visible: 'Peers: 0'
+    timeout: 120000
+- tapOn: Show
+- copyTextFrom: '[0-9a-f]{64}'
+- evalScript: ${output.topic = maestro.copiedText}
+- tapOn: '‹ Leave'
+- assertVisible: Create
+- tapOn: Game Topic
+- inputText: ${output.topic}
+- hideKeyboard
+- tapOn: Join
+- extendedWaitUntil:
+    visible: 'Peers: 0'
+    timeout: 120000
+- tapOn: Show
+- assertVisible: ${output.topic}
+- tapOn: '‹ Leave'
+- assertVisible: Create

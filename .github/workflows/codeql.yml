@@ -1,0 +1,81 @@
+name: CodeQL
+
+on:
+  push:
+    branches: [main]
+    paths: [.github/workflows/codeql.yml]
+  pull_request:
+    paths: [.github/workflows/codeql.yml]
+  schedule:
+    - cron: '23 6 * * 1'
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: Source branch, tag, or commit
+        type: string
+        default: main
+
+permissions:
+  contents: read
+
+jobs:
+  analyze:
+    name: ${{ matrix.app }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - app: desktop
+            repository: geordangesink/snake
+          - app: mobile
+            repository: geordangesink/snake-mobile
+    steps:
+      - name: Checkout CI repository
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Checkout source
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ matrix.repository }}
+          ref: ${{ inputs.ref || 'main' }}
+          path: source
+          persist-credentials: false
+
+      - name: Record analyzed source
+        env:
+          SOURCE_REPOSITORY: ${{ matrix.repository }}
+          SOURCE_REF: ${{ inputs.ref || 'main' }}
+        run: |
+          mkdir -p results
+          jq -n --arg repository "$SOURCE_REPOSITORY" --arg ref "$SOURCE_REF" \
+            --arg commit "$(git -C source rev-parse HEAD)" \
+            '{repository: $repository, ref: $ref, commit: $commit}' > results/source.json
+
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@v4
+        with:
+          languages: javascript-typescript
+          build-mode: none
+          source-root: source
+          queries: security-extended
+
+      - name: Analyze source
+        uses: github/codeql-action/analyze@v4
+        with:
+          category: snake-${{ matrix.app }}
+          output: results/codeql
+          upload: never
+          upload-database: false
+
+      - name: Upload CodeQL report
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: codeql-snake-${{ matrix.app }}
+          path: results
+          if-no-files-found: error
+          retention-days: 14

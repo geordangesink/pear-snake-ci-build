@@ -1,6 +1,5 @@
 name: Build Snake Mobile
-run-name: Build Snake Mobile · ${{ inputs.ref }} · ${{ inputs.profile }}
-
+run-name: Snake mobile / ${{ inputs.mode }} / ${{ inputs.ref }}
 on:
   workflow_dispatch:
     inputs:
@@ -9,6 +8,14 @@ on:
         required: true
         default: main
         type: string
+      mode:
+        description: Build native apps, build Pear updates, or publish an existing build
+        type: choice
+        default: native
+        options:
+          - native
+          - updates
+          - publish
       profile:
         description: Distribution profile
         required: true
@@ -18,12 +25,12 @@ on:
           - production
           - preview
       build_ios:
-        description: Build iOS
+        description: Build or publish iOS
         required: true
         default: true
         type: boolean
       build_android:
-        description: Build Android
+        description: Build or publish Android
         required: true
         default: true
         type: boolean
@@ -31,46 +38,82 @@ on:
         description: Optional build number (defaults to run number + BUILD_NUMBER_OFFSET)
         required: false
         type: string
+      channel:
+        type: choice
+        default: dev
+        options:
+          - dev
+          - stage
+          - production
+      upgrade-key:
+        description: Optional package.json upgrade override
+        type: string
+      run-stage:
+        type: boolean
+        default: false
+        description: Build and stage Pear updates
+      stage-dry-run:
+        type: boolean
+        default: false
       publish:
         description: Publish successful production builds to TestFlight / Google Play internal testing
         required: true
         default: false
         type: boolean
+      build_run_id:
+        description: Production build run ID when mode is publish
+        type: string
+        default: ''
       notify:
         description: Send a Slack build notification
         required: true
         default: false
         type: boolean
-
 permissions:
   contents: read
   actions: read
-
 concurrency:
   group: mobile-build-${{ github.ref }}
   cancel-in-progress: false
-
 defaults:
   run:
     shell: bash
-
 env:
   CI: 'true'
   BUILD_PROFILE: ${{ inputs.profile }}
   BUILD_NUMBER: ${{ inputs.build_number }}
   SOURCE_REPOSITORY: geordangesink/snake-mobile
   SOURCE_REF: ${{ inputs.ref }}
-
 jobs:
   source:
     name: Resolve source
-    if: ${{ inputs.build_ios || inputs.build_android }}
     runs-on: ubuntu-24.04
     environment: release
     timeout-minutes: 5
     outputs:
       commit: ${{ steps.source.outputs.commit }}
     steps:
+      - name: Validate build options
+        env:
+          MODE: ${{ inputs.mode }}
+          PROFILE: ${{ inputs.profile }}
+          PUBLISH: ${{ inputs.publish }}
+          RUN_STAGE: ${{ inputs.run-stage }}
+          IOS: ${{ inputs.build_ios }}
+          ANDROID: ${{ inputs.build_android }}
+          BUILD_RUN_ID: ${{ inputs.build_run_id }}
+        run: |
+          if [[ "$MODE" != updates && "$IOS" != true && "$ANDROID" != true ]]; then
+            echo "::error::Select at least one native platform."
+            exit 1
+          fi
+          if [[ "$MODE" == publish ]]; then
+            [[ "$BUILD_RUN_ID" =~ ^[1-9][0-9]*$ ]] || { echo "::error::Publishing requires a numeric build_run_id."; exit 1; }
+            [[ "$RUN_STAGE" != true ]] || { echo "::error::Publishing an existing build cannot stage new updates."; exit 1; }
+          elif [[ "$PUBLISH" == true && ( "$MODE" != native || "$PROFILE" != production ) ]]; then
+            echo "::error::Publishing after a build requires native mode and the production profile."
+            exit 1
+          fi
       - name: Checkout snake-mobile
         uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
         with:
@@ -78,19 +121,16 @@ jobs:
           ref: ${{ inputs.ref }}
           token: ${{ github.token }}
           persist-credentials: false
-
+        if: ${{ inputs.mode != 'publish' }}
       - name: Resolve source commit
         id: source
         run: |
-          test -f scripts/prepare-build.js
-          test -f scripts/build-ios.sh
-          test -f scripts/build-android.sh
           echo "commit=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
-
+        if: ${{ inputs.mode != 'publish' }}
   build-ios:
     name: Build iOS
     needs: source
-    if: ${{ inputs.build_ios }}
+    if: ${{ inputs.mode == 'native' && inputs.build_ios }}
     runs-on: macos-26
     environment: release
     timeout-minutes: 90
@@ -109,25 +149,21 @@ jobs:
           ref: ${{ needs.source.outputs.commit }}
           token: ${{ github.token }}
           persist-credentials: false
-
       - name: Checkout build configuration
         uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
         with:
           ref: ${{ github.sha }}
           path: ci
           persist-credentials: false
-
       - uses: ./ci/.github/actions/setup-mobile-build
         with:
           platform: ios
-
+          upgrade-key: ${{ inputs.upgrade-key }}
       - name: Install Pods
         working-directory: ios
         run: pod install
-
       - name: Archive and export signed IPA
         run: bash scripts/build-ios.sh
-
       - name: Record build source
         run: |
           node <<'NODE'
@@ -142,7 +178,6 @@ jobs:
           })
           fs.writeFileSync(file, JSON.stringify(metadata, null, 2) + '\n')
           NODE
-
       - name: Upload iOS build
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
@@ -153,7 +188,6 @@ jobs:
             dist/ios/build-metadata.json
           if-no-files-found: error
           retention-days: 14
-
       - name: Upload iOS build logs
         if: ${{ failure() }}
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
@@ -162,11 +196,10 @@ jobs:
           overwrite: true
           path: dist/ios/*.log
           retention-days: 14
-
   build-android:
     name: Build Android
     needs: source
-    if: ${{ inputs.build_android }}
+    if: ${{ inputs.mode == 'native' && inputs.build_android }}
     runs-on: ubuntu-24.04
     environment: release
     timeout-minutes: 90
@@ -184,32 +217,26 @@ jobs:
           ref: ${{ needs.source.outputs.commit }}
           token: ${{ github.token }}
           persist-credentials: false
-
       - name: Checkout build configuration
         uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
         with:
           ref: ${{ github.sha }}
           path: ci
           persist-credentials: false
-
       - uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961
         with:
           distribution: temurin
           java-version: 17
-
       - uses: android-actions/setup-android@9fc6c4e9069bf8d3d10b2204b1fb8f6ef7065407
         with:
           packages: platform-tools cmake;3.22.1
-
       - uses: ./ci/.github/actions/setup-mobile-build
         with:
           platform: android
-
+          upgrade-key: ${{ inputs.upgrade-key }}
       - uses: gradle/actions/setup-gradle@0b6dd653ba04f4f93bf581ec31e66cbd7dcb644d
-
       - name: Build signed Android artifacts
         run: bash scripts/build-android.sh
-
       - name: Record build source
         run: |
           node <<'NODE'
@@ -224,7 +251,6 @@ jobs:
           })
           fs.writeFileSync(file, JSON.stringify(metadata, null, 2) + '\n')
           NODE
-
       - name: Upload Android build
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
@@ -236,7 +262,6 @@ jobs:
             dist/android/build-metadata.json
           if-no-files-found: error
           retention-days: 14
-
       - name: Upload Android build logs
         if: ${{ failure() }}
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
@@ -245,52 +270,268 @@ jobs:
           overwrite: true
           path: dist/android/*.log
           retention-days: 14
-
-  publish:
-    name: Publish
-    needs: [build-ios, build-android]
-    if: >-
-      ${{ !cancelled() && inputs.publish && inputs.profile == 'production' &&
-          needs.build-ios.result != 'failure' && needs.build-android.result != 'failure' &&
-          (needs.build-ios.result == 'success' || needs.build-android.result == 'success') }}
-    uses: ./.github/workflows/publish-mobile.yml
-    secrets: inherit
-    with:
-      build_run_id: ${{ format('{0}', github.run_id) }}
-      submit_ios: ${{ needs.build-ios.result == 'success' }}
-      submit_android: ${{ needs.build-android.result == 'success' }}
-
-  notify:
-    needs: [source, build-ios, build-android, publish]
-    if: ${{ always() && !cancelled() && inputs.notify }}
-    uses: ./.github/workflows/notify.yml
-    secrets: inherit
-    with:
-      title: Snake mobile build
-      ref: ${{ inputs.ref }}
-      channel: ${{ inputs.profile }}
-      results: ${{ toJSON(needs) }}
-
-  build-summary:
-    name: Build Summary
-    if: ${{ always() }}
-    needs: [source, build-ios, build-android]
-    runs-on: ubuntu-24.04
-    env:
-      SOURCE_COMMIT: ${{ needs.source.outputs.commit }}
-      IOS_RESULT: ${{ needs.build-ios.result }}
-      ANDROID_RESULT: ${{ needs.build-android.result }}
-      PUBLISH_REQUESTED: ${{ inputs.publish }}
+  updates:
+    needs: source
+    if: ${{ inputs.mode == 'updates' || (inputs.mode == 'native' && inputs.run-stage) }}
+    runs-on: ubuntu-latest
+    environment: release
+    timeout-minutes: 30
+    outputs:
+      upgrade-link: ${{ steps.source.outputs.upgrade-link }}
     steps:
-      - name: Summarize build artifacts
+      - name: Checkout snake-mobile
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        with:
+          repository: geordangesink/snake-mobile
+          ref: ${{ needs.source.outputs.commit }}
+          token: ${{ github.token }}
+          persist-credentials: false
+      - name: Set up Node.js
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e
+        with:
+          node-version: 24
+          cache: npm
+      - name: Install dependencies
+        run: npm ci
+      - name: Set upgrade key
+        if: ${{ inputs.upgrade-key != '' }}
+        env:
+          UPGRADE_KEY: ${{ inputs.upgrade-key }}
         run: |
-          {
-            echo "## Snake mobile builds"
-            echo "- Source: $SOURCE_REPOSITORY @ $SOURCE_REF ($SOURCE_COMMIT)"
-            echo "- iOS: $IOS_RESULT"
-            echo "- Android: $ANDROID_RESULT"
-            echo "- Profile: $BUILD_PROFILE"
-            echo "- Build run ID: $GITHUB_RUN_ID"
-            echo "- Publish requested: $PUBLISH_REQUESTED"
-            echo "Download the signed binaries and build metadata from this run's artifacts."
-          } >> "$GITHUB_STEP_SUMMARY"
+          node <<'NODE'
+          const fs = require('node:fs')
+          const pkg = JSON.parse(fs.readFileSync('package.json', 'utf8'))
+          pkg.upgrade = process.env.UPGRADE_KEY
+          fs.writeFileSync('package.json', JSON.stringify(pkg, null, 2) + '\n')
+          NODE
+      - name: Record source
+        id: source
+        env:
+          SOURCE_REF: ${{ inputs.ref }}
+          CHANNEL: ${{ inputs.channel }}
+        run: |
+          node <<'NODE'
+          const fs = require('node:fs')
+          const path = require('node:path')
+          const { execFileSync } = require('node:child_process')
+          const sha = execFileSync('git', ['rev-parse', 'HEAD'], { encoding: 'utf8' }).trim()
+          const pkg = JSON.parse(fs.readFileSync('package.json', 'utf8'))
+          const metadata = {
+            repository: 'geordangesink/snake-mobile',
+            ref: process.env.SOURCE_REF,
+            sha,
+            version: pkg.version,
+            upgrade: pkg.upgrade,
+            channel: process.env.CHANNEL,
+            buildRepository: process.env.GITHUB_REPOSITORY,
+            buildRunId: process.env.GITHUB_RUN_ID
+          }
+          fs.writeFileSync(path.join(process.env.RUNNER_TEMP, 'source.json'), JSON.stringify(metadata, null, 2) + '\n')
+          if (typeof pkg.upgrade !== 'string' || /[\r\n]/.test(pkg.upgrade)) throw new Error('Invalid upgrade link')
+          fs.appendFileSync(process.env.GITHUB_OUTPUT, `upgrade-link=${pkg.upgrade}\n`)
+          NODE
+      - name: Build mobile updates
+        env:
+          CI: 'true'
+          npm_config_ignore_scripts: 'true'
+        run: npm run update
+      - name: Package stage artifact
+        run: tar -czf "$RUNNER_TEMP/stage.tar.gz" -C dist .
+      - name: Upload stage artifact
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: snake-mobile-stage
+          path: ${{ runner.temp }}/stage.tar.gz
+          if-no-files-found: error
+      - name: Upload source metadata
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: snake-mobile-source
+          path: ${{ runner.temp }}/source.json
+          if-no-files-found: error
+  stage:
+    needs:
+      - updates
+      - build-ios
+      - build-android
+    if: ${{ always() && !cancelled() && inputs.run-stage && needs.updates.result == 'success' && (inputs.mode == 'updates' || ((!inputs.build_ios || needs.build-ios.result == 'success') && (!inputs.build_android || needs.build-android.result == 'success'))) }}
+    permissions:
+      contents: write
+      pull-requests: write
+      actions: read
+    runs-on: macos-latest
+    environment: release
+    timeout-minutes: 20
+    concurrency:
+      group: pear-ci-snapshot
+      cancel-in-progress: false
+    outputs:
+      pr-url: ${{ steps.pear-ci.outputs.pr-url }}
+      pear-link: ${{ steps.pear-ci.outputs.pear-link }}
+    steps:
+      - name: Create GitHub App token
+        id: build-app-token
+        if: ${{ vars.BUILD_APP_CLIENT_ID != '' || vars.BUILD_APP_ID != '' }}
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1
+        with:
+          client-id: ${{ vars.BUILD_APP_CLIENT_ID || vars.BUILD_APP_ID }}
+          private-key: ${{ secrets.BUILD_APP_PRIVATE_KEY }}
+          permission-contents: write
+          permission-pull-requests: write
+      - name: Checkout CI repository
+        uses: actions/checkout@v4
+        with:
+          token: ${{ steps.build-app-token.outputs.token || github.token }}
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - name: Download mobile updates
+        uses: actions/download-artifact@v4
+        with:
+          name: snake-mobile-stage
+          path: out/artifacts
+      - name: Extract mobile updates
+        run: |
+          mkdir -p out/stage
+          tar -xzf out/artifacts/stage.tar.gz -C out/stage
+      - name: Stage with pear-ci
+        id: pear-ci
+        uses: ./.github/actions/stage
+        with:
+          namespace: ${{ vars.PEAR_MOBILE_NAMESPACE || format('snake-mobile-{0}-v1', inputs.channel) }}
+          primary-key: ${{ secrets.PEAR_MOBILE_PRIMARY_KEY }}
+          snapshot-path: ci/snake-mobile-snapshot.json
+          target: ./out/stage
+          upgrade-link: ${{ needs.updates.outputs.upgrade-link }}
+          dry-run: ${{ inputs.stage-dry-run }}
+          github-token: ${{ steps.build-app-token.outputs.token || github.token }}
+          app-slug: ${{ steps.build-app-token.outputs.app-slug }}
+  submit-ios:
+    name: Submit iOS (App Store Connect)
+    needs:
+      - source
+      - build-ios
+      - build-android
+    if: ${{ always() && !cancelled() && needs.source.result == 'success' && inputs.build_ios && (inputs.mode == 'publish' || (inputs.mode == 'native' && inputs.publish && inputs.profile == 'production' && (!inputs.build_ios || needs.build-ios.result == 'success') && (!inputs.build_android || needs.build-android.result == 'success'))) }}
+    runs-on: macos-26
+    environment: release
+    timeout-minutes: 30
+    concurrency:
+      group: snake-mobile-publish-ios
+      cancel-in-progress: false
+    env:
+      BUILD_RUN_ID: ${{ inputs.mode == 'publish' && inputs.build_run_id || format('{0}', github.run_id) }}
+      DEVELOPER_DIR: /Applications/Xcode_26.2.app/Contents/Developer
+    steps:
+      - name: Verify build run ID
+        run: '[[ "$BUILD_RUN_ID" =~ ^[1-9][0-9]*$ ]]'
+      - name: Download production IPA
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: mobile-ios-production
+          path: ${{ runner.temp }}/ios
+          github-token: ${{ github.token }}
+          run-id: ${{ env.BUILD_RUN_ID }}
+      - name: Validate and upload to App Store Connect
+        env:
+          APPSTORE_API_KEY_ID: ${{ secrets.APPSTORE_API_KEY_ID }}
+          APPSTORE_ISSUER_ID: ${{ secrets.APPSTORE_ISSUER_ID }}
+          APPSTORE_API_PRIVATE_KEY: ${{ secrets.APPSTORE_API_PRIVATE_KEY }}
+        run: |
+          set -euo pipefail
+          for key in APPSTORE_API_KEY_ID APPSTORE_ISSUER_ID APPSTORE_API_PRIVATE_KEY; do
+            if [ -z "${!key:-}" ]; then
+              echo "Missing secret: $key"
+              exit 1
+            fi
+          done
+          test -s "$RUNNER_TEMP/ios/Snake.ipa"
+          umask 077
+          mkdir -p "$RUNNER_TEMP/appstore-connect/private_keys"
+          cd "$RUNNER_TEMP/appstore-connect"
+          printf '%s' "$APPSTORE_API_PRIVATE_KEY" | base64 --decode > "private_keys/AuthKey_${APPSTORE_API_KEY_ID}.p8"
+          xcrun altool --validate-app -f "$RUNNER_TEMP/ios/Snake.ipa" -t ios \
+            --apiKey "$APPSTORE_API_KEY_ID" --apiIssuer "$APPSTORE_ISSUER_ID"
+          xcrun altool --upload-app -f "$RUNNER_TEMP/ios/Snake.ipa" -t ios \
+            --apiKey "$APPSTORE_API_KEY_ID" --apiIssuer "$APPSTORE_ISSUER_ID"
+      - name: Remove App Store Connect private key
+        if: ${{ always() }}
+        run: rm -rf "$RUNNER_TEMP/appstore-connect"
+  submit-android:
+    name: Submit Android (Play Console)
+    needs:
+      - source
+      - build-ios
+      - build-android
+    if: ${{ always() && !cancelled() && needs.source.result == 'success' && inputs.build_android && (inputs.mode == 'publish' || (inputs.mode == 'native' && inputs.publish && inputs.profile == 'production' && (!inputs.build_ios || needs.build-ios.result == 'success') && (!inputs.build_android || needs.build-android.result == 'success'))) }}
+    runs-on: ubuntu-24.04
+    environment: release
+    timeout-minutes: 30
+    concurrency:
+      group: snake-mobile-publish-android
+      cancel-in-progress: false
+    env:
+      BUILD_RUN_ID: ${{ inputs.mode == 'publish' && inputs.build_run_id || format('{0}', github.run_id) }}
+    steps:
+      - name: Verify build run ID
+        run: '[[ "$BUILD_RUN_ID" =~ ^[1-9][0-9]*$ ]]'
+      - name: Download production Android bundle
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: mobile-android-production
+          path: ${{ runner.temp }}/android
+          github-token: ${{ github.token }}
+          run-id: ${{ env.BUILD_RUN_ID }}
+      - name: Read built application ID
+        id: metadata
+        env:
+          GOOGLE_SERVICE_ACCOUNT_JSON: ${{ secrets.GOOGLE_SERVICE_ACCOUNT_JSON }}
+        run: |
+          set -euo pipefail
+          if [ -z "$GOOGLE_SERVICE_ACCOUNT_JSON" ]; then
+            echo "Missing secret: GOOGLE_SERVICE_ACCOUNT_JSON"
+            exit 1
+          fi
+          test -s "$RUNNER_TEMP/android/Snake.aab"
+          package_name="$(jq -er '
+            select(.platform == "android" and .profile == "production") |
+            .applicationId |
+            select(type == "string" and test("^[A-Za-z][A-Za-z0-9_]*(\\.[A-Za-z][A-Za-z0-9_]*)+$"))
+          ' "$RUNNER_TEMP/android/build-metadata.json")"
+          echo "package_name=$package_name" >> "$GITHUB_OUTPUT"
+      - name: Upload to Google Play internal testing
+        uses: r0adkll/upload-google-play@e738b9dd8f2476ea806d921b64aacd24f34515a5
+        with:
+          serviceAccountJsonPlainText: ${{ secrets.GOOGLE_SERVICE_ACCOUNT_JSON }}
+          packageName: ${{ steps.metadata.outputs.package_name }}
+          releaseFiles: ${{ runner.temp }}/android/Snake.aab
+          tracks: internal
+          status: completed
+  notify:
+    needs:
+      - source
+      - build-ios
+      - build-android
+      - updates
+      - stage
+      - submit-ios
+      - submit-android
+    if: ${{ always() && !cancelled() && inputs.notify }}
+    runs-on: ubuntu-latest
+    environment: release
+    timeout-minutes: 5
+    steps:
+      - name: Checkout CI repository
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - name: Notify Slack
+        uses: ./.github/actions/notify
+        with:
+          title: Snake mobile build
+          ref: ${{ inputs.ref }}
+          channel: ${{ inputs.channel }}
+          results: ${{ toJSON(needs) }}
+          webhook: ${{ secrets.SLACK_WEBHOOK_URL }}

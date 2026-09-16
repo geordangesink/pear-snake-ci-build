@@ -1,63 +1,67 @@
 # pear-snake-ci-build
 
-This test branch builds `geordangesink/snake` and `geordangesink/snake-mobile`. The `main` branch builds the corresponding `holepunchto` repositories, following `pear-ci-build`.
-
-Start builds from this repository's Actions tab. Source checkouts, signing, artifacts, staging snapshots, store publication, and optional Slack notifications run here. Configure secrets in this repository's `release` environment.
-
-## Source repositories
-
-| CI workflow branch | Desktop source        | Mobile source                |
-| ------------------ | --------------------- | ---------------------------- |
-| `main`             | `holepunchto/snake`   | `holepunchto/snake-mobile`   |
-| `test`             | `geordangesink/snake` | `geordangesink/snake-mobile` |
-
-In Actions, select `test` under **Use workflow from** to build the personal repos. The `ref` input selects the branch, tag, or commit within the source repo and defaults to `main` on both workflow branches.
-
-Staging and store publishing on `test` use this repository's configured release destinations and remain opt-in.
+Builds, artifacts, signing credentials, Pear staging, and mobile store publishing live here. Source code stays in `geordangesink/snake` and `geordangesink/snake-mobile`. Both source refs default to `main` and remain selectable.
 
 ## Workflows
 
-| Workflow                                                | Source default                    | Outputs                                                                                                       |
-| ------------------------------------------------------- | --------------------------------- | ------------------------------------------------------------------------------------------------------------- |
-| `build.yml` — Build Snake                               | `snake@main`                      | Linux x64/arm64 AppImage, Snap and Flatpak source archives; macOS arm64/x64 DMG and app ZIP; Windows x64 MSIX |
-| `build-mobile.yml` — Build Snake Mobile                 | `snake-mobile@main`               | Signed iOS IPA and Android APK; production Android AAB; build metadata                                        |
-| `build-mobile-updates.yml` — Build Snake Mobile Updates | `snake-mobile@main`               | Pear updates for iOS arm64, both iOS simulator architectures, and Android arm64                               |
-| `publish-mobile.yml` — Publish Snake Mobile             | Build run ID from this repository | TestFlight and Google Play internal testing submissions                                                       |
+| Workflow                | Purpose                                                              |
+| ----------------------- | -------------------------------------------------------------------- |
+| **Build Snake Desktop** | Linux x64/arm64, macOS x64/arm64, Windows x64; optional Pear staging |
+| **Build Snake Mobile**  | Native iOS/Android builds, Pear updates, and store publishing        |
+| **CodeQL**              | JavaScript/TypeScript security analysis for both source repositories |
+| **E2E Snake Desktop**   | Tests packaged apps: create, steer, join another player, and leave   |
+| **E2E Snake Mobile**    | Builds and tests iOS Simulator and Android emulator apps             |
 
-Each build defaults to its source repository’s `main` branch and accepts another branch, tag, or commit through `ref`. Desktop and native mobile builds resolve the ref once so all platforms use the same commit.
+Start builds from this repository's **Actions** tab. Each build resolves `ref` once so all selected platforms use the same source commit. Publishing, staging, and Slack notifications are opt-in.
 
-Desktop platform toggles default to false, matching Pear. Select the platforms to build. `channel` defaults to `dev`, with `stage` and `production` also available. `upgrade-key` overrides the package's `upgrade` field; otherwise the source value is preserved.
+### Desktop
 
-Native mobile builds default to both platforms and the `production` profile. `preview` produces an ad hoc IPA and signed APK. `publish` is opt-in and only applies to successful production builds. The publishing workflow can also retry either platform using the original build run ID. Native artifacts and failure logs are retained for 14 days.
+Select the platforms to build; all default to off, matching `pear-ci-build`. Outputs are Linux AppImage, Snap, and Flatpak source archives; macOS DMG and app ZIP; and signed Windows MSIX.
+
+Enable `unsigned` for testing without desktop signing credentials. macOS produces an unsigned DMG and app ZIP; Windows produces a portable ZIP on a hosted runner. These artifact names end in `-unsigned`. Linux outputs are unchanged. Unsigned builds cannot stage updates.
+
+### Mobile
+
+Use **Build Snake Mobile** for all three modes:
+
+| `mode`             | Behavior                                                                              |
+| ------------------ | ------------------------------------------------------------------------------------- |
+| `native` (default) | Build selected iOS/Android apps. Optionally enable `run-stage` and/or `publish`.      |
+| `updates`          | Bundle Pear updates. Enable `run-stage` to stage them.                                |
+| `publish`          | Submit existing production artifacts using `build_run_id` and the platform selectors. |
+
+Native builds default to both platforms and the `production` profile. `preview` produces an ad hoc IPA and signed APK. Production adds an Android AAB and supports TestFlight / Google Play internal testing submissions. Publishing uses the exact artifacts from the selected run; there is no latest-build fallback. Artifacts are retained for 14 days.
+
+See [Releasing Snake Mobile](RELEASING.md) for versioning, credentials, and store setup.
 
 ## Repository setup
 
-1. Push these files to the `main` branch of `geordangesink/pear-snake-ci-build`, including the initial empty `ci/snapshot.json`.
-2. Create its `release` environment and configure the secrets and variables below. Repository-level secrets and variables also work.
-3. Optionally install a build GitHub App on this CI repository with Contents write and Pull requests write for staging snapshots. Set `BUILD_APP_CLIENT_ID` and `BUILD_APP_PRIVATE_KEY` here when using it. Staging otherwise uses `GITHUB_TOKEN`.
-4. Make the organization's `windows-signer` runner available to this repository, with its signing certificate installed. Ensure private shared Actions/packages grant this repository access if applicable.
-5. Set mobile application IDs and a build-number offset before the first store build.
+Configure the `release` environment here, or use repository-level secrets and variables. Source repositories must be public; checkout uses `GITHUB_TOKEN`.
 
-Source repositories are expected to be public. Desktop and mobile source checkouts use the automatic `GITHUB_TOKEN`; building does not require GitHub App credentials.
+For signed Windows builds, register a `windows-signer` runner with the signing certificate installed. Native mobile builds use Xcode 26.2 on `macos-26` and Java 17 on `ubuntu-24.04`.
 
-Source build scripts remain in their source repositories. The migrated desktop release and mobile build/publish workflows are removed from the source repos. Source lint/test integration and desktop npm publishing remain independent.
+### Pear staging
 
-## Secrets and variables
+The two apps have independent identities and snapshots:
 
-### Shared
+| App     | Secret                     | Snapshot                        | Default namespace           |
+| ------- | -------------------------- | ------------------------------- | --------------------------- |
+| Desktop | `PEAR_DESKTOP_PRIMARY_KEY` | `ci/snake-snapshot.json`        | `snake-<channel>-v1`        |
+| Mobile  | `PEAR_MOBILE_PRIMARY_KEY`  | `ci/snake-mobile-snapshot.json` | `snake-mobile-<channel>-v1` |
 
-| Name                    | Kind     | Used for                                                        |
-| ----------------------- | -------- | --------------------------------------------------------------- |
-| `BUILD_APP_CLIENT_ID`   | Variable | Optional GitHub App client ID for staging                       |
-| `BUILD_APP_PRIVATE_KEY` | Secret   | Optional GitHub App PEM private key for staging                 |
-| `PEAR_PRIMARY_KEY`      | Secret   | 64-character hex Corestore identity for both apps' Pear staging |
-| `SLACK_WEBHOOK_URL`     | Secret   | Optional notifications when `notify` is selected                |
+Each secret is its app's 64-character hex Corestore primary key. `channel` selects `dev`, `stage`, or `production`. Optional `PEAR_DESKTOP_NAMESPACE` / `PEAR_MOBILE_NAMESPACE` variables override the corresponding namespace, including its channel suffix.
 
-The staging workflow accepts `BUILD_APP_ID` as a fallback for existing setups. New setups should use `BUILD_APP_CLIENT_ID` with the client ID from the GitHub App settings.
+To preserve existing upgrade links, use each app's original identity and namespace. A new primary key creates a different link. Staging checks the derived link against the source's `package.json` `upgrade` field, or the `upgrade-key` input override, and stops on a mismatch. Native packages and update bundles use the same override.
+
+Enable `run-stage` to stage, and `stage-dry-run` to preview without publishing or committing a snapshot. Desktop requires all selected platform builds to succeed. Mobile native mode stages only after all selected native builds succeed; updates mode runs independently.
+
+Snapshots are read from and committed to this repository's `main` branch. A shared concurrency group serializes snapshot writes. If direct push is blocked, staging opens a snapshot PR; merge it before staging that app again. Keep both initial snapshot files in `main`.
+
+Staging uses `GITHUB_TOKEN` by default. An optional GitHub App with Contents write and Pull requests write can supply the token through `BUILD_APP_CLIENT_ID` (variable) and `BUILD_APP_PRIVATE_KEY` (secret). `BUILD_APP_ID` remains a fallback for existing setups.
 
 ### Desktop signing
 
-Use the same names as `pear-ci-build`:
+Use the same secret names as `pear-ci-build`:
 
 - `MACOS_CERTIFICATE_BASE64`
 - `MACOS_P12_PASSWORD`
@@ -67,11 +71,11 @@ Use the same names as `pear-ci-build`:
 - `MACOS_APPLE_TEAM_ID`
 - `WINDOWS_CERT_SHA1`
 
-Windows uses the Pear certificate-thumbprint flow on `windows-signer`. macOS uses Apple ID/password notarization.
+`MACOS_CERTIFICATE_BASE64` must contain a base64-encoded `.p12` export of the macOS Developer ID Application certificate **and its private key**. Set its password and matching identity in the corresponding secrets. The mobile distribution certificate is separate. Signed macOS builds check all six desktop secrets before installing dependencies.
 
-### Mobile signing and stores
+### Mobile signing and publishing
 
-| Platform          | Secrets                                                                                             |
+| Purpose           | Secrets                                                                                             |
 | ----------------- | --------------------------------------------------------------------------------------------------- |
 | iOS signing       | `BUILD_CERTIFICATE_BASE64`, `P12_PASSWORD`, `APPLE_TEAM_ID`, `IOS_PROVISIONING_PROFILE_BASE64`      |
 | iOS preview       | `IOS_ADHOC_PROVISIONING_PROFILE_BASE64` replaces the production provisioning profile                |
@@ -79,36 +83,28 @@ Windows uses the Pear certificate-thumbprint flow on `windows-signer`. macOS use
 | App Store Connect | `APPSTORE_API_KEY_ID`, `APPSTORE_ISSUER_ID`, `APPSTORE_API_PRIVATE_KEY`                             |
 | Google Play       | `GOOGLE_SERVICE_ACCOUNT_JSON`                                                                       |
 
-Certificates, provisioning profiles, the Android keystore, and the App Store Connect `.p8` key are base64 encoded. `GOOGLE_SERVICE_ACCOUNT_JSON` is raw JSON. Apple IDs, passwords, key IDs, and team IDs are plain values.
+Certificates, provisioning profiles, the Android keystore, and the App Store Connect `.p8` key are base64 encoded. The Google service account secret is raw JSON. Other values are plain text.
 
 Mobile variables:
 
-- `IOS_BUNDLE_ID`: registered bundle identifier. The source placeholder `com.anonymous.snake` is rejected for production.
-- `ANDROID_PACKAGE`: optional override of the source's `com.pearsnake.app` application ID.
-- `BUILD_NUMBER_OFFSET`: non-negative integer added to this workflow's run number. Set it high enough to exceed existing store build numbers, since this repository starts a new run-number sequence. The `build_number` input can override an individual build.
+- `IOS_BUNDLE_ID`: registered bundle identifier; production rejects placeholder identifiers.
+- `ANDROID_PACKAGE`: optional override of the source application's package name.
+- `BUILD_NUMBER_OFFSET`: nonnegative offset added to this workflow's run number. Set it high enough to exceed previous store build numbers. `build_number` can override one build.
 
-Native iOS builds use Xcode 26.2 on `macos-26`; Android uses Java 17 on `ubuntu-24.04`.
+Set `SLACK_WEBHOOK_URL` to use optional build notifications.
 
-## Pear staging
+## Checks
 
-`run-stage` and `stage-dry-run` mirror Pear's optional staging flow. Desktop staging requires at least one selected platform and successful builds for every selected platform. The stage builder feeds signed `.app`, `.AppImage`, and `.msix` artifacts through `pear-build`; installers remain downloadable from the build run.
+**CodeQL** scans both repositories weekly or on manual dispatch. Download each app's SARIF report and source metadata from its run. Reports stay here as artifacts; uploading alerts to a source repository's Security tab requires a token with access to that repository.
 
-Mobile updates use `npm run update` to bundle JavaScript and assets. Native store packages and Pear update bundles use separate workflows.
+**E2E Snake Desktop** runs after successful desktop builds on `main`, or manually with a completed desktop build’s `run-id`. It uses available AppImage, macOS app ZIP, and Windows ZIP/MSIX artifacts. Tests exercise the extracted application, including real multiplayer connections; they do not test installer registration or signing.
 
-Both stage jobs call `holepunchto/actions/pear-ci` and save snapshots here. Namespaces prevent the two apps from sharing an update drive:
+**E2E Snake Mobile** runs manually against a selectable source ref. It builds unsigned iOS Simulator and debug-signed Android emulator apps without release secrets, then tests create, copy topic, leave, and join through Maestro. Both E2E workflows use real networking and upload diagnostics.
 
-- Desktop: `snake-<channel>-v1`
-- Mobile: `snake-mobile-<channel>-v1`
-
-A shared staging concurrency group serializes updates to `ci/snapshot.json`. Stage artifacts are archived before upload to preserve app permissions and symlinks. The initial snapshot is empty; no Pear CLI snapshot or signing keys are copied.
-
-These namespaces create new update drives under `PEAR_PRIMARY_KEY`. Their links must be wired into the apps' `upgrade` fields using `upgrade-key` or source changes. They do not take over the apps' existing upgrade links automatically.
-
-## Validation
+Local workflow validation:
 
 ```sh
 actionlint -config-file .github/actionlint.yaml .github/workflows/*.yml
 node --check scripts/build-stage-artifact.js
+node --check scripts/stage.js
 ```
-
-Signed builds, store submissions, and network staging require the configured GitHub repository, runners, and credentials.

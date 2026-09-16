@@ -1,11 +1,13 @@
 name: Set up mobile build
 description: Prepare app identity, dependencies, Bare bundle, and native project
-
 inputs:
   platform:
     description: Native platform to generate
     required: true
-
+  upgrade-key:
+    description: Optional package upgrade link override
+    required: false
+    default: ''
 runs:
   using: composite
   steps:
@@ -13,7 +15,6 @@ runs:
       with:
         node-version: 24
         cache: npm
-
     - name: Prepare build metadata
       shell: bash
       env:
@@ -24,15 +25,24 @@ runs:
       run: |
         node scripts/prepare-build.js
         printf 'IOS_BUNDLE_ID=%s\nANDROID_PACKAGE=%s\n' "$IOS_BUNDLE_ID" "$ANDROID_PACKAGE" >> "$GITHUB_ENV"
-
+    - name: Set upgrade link
+      if: ${{ inputs.upgrade-key != '' }}
+      shell: bash
+      env:
+        UPGRADE_KEY: ${{ inputs.upgrade-key }}
+      run: |
+        node <<'NODE'
+        const fs = require('node:fs')
+        const pkg = JSON.parse(fs.readFileSync('package.json', 'utf8'))
+        pkg.upgrade = process.env.UPGRADE_KEY
+        fs.writeFileSync('package.json', JSON.stringify(pkg, null, 2) + '\n')
+        NODE
     - name: Install dependencies
       shell: bash
       run: npm ci
-
     - name: Bundle Bare worker
       shell: bash
       run: npm run bundle:bare
-
     - name: Generate native project
       shell: bash
       env:

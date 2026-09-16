@@ -1,0 +1,131 @@
+name: E2E Snake Desktop
+
+on:
+  workflow_run:
+    workflows: [Build Snake Desktop]
+    types: [completed]
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      run-id:
+        description: Completed desktop build run ID containing app artifacts
+        type: string
+        required: true
+
+permissions:
+  actions: read
+  contents: read
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  prepare:
+    if: ${{ github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      matrix: ${{ steps.matrix.outputs.value }}
+      run-id: ${{ steps.matrix.outputs.run-id }}
+    steps:
+      - name: Select packaged app artifacts
+        id: matrix
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RUN_ID: ${{ github.event.workflow_run.id || inputs.run-id }}
+        run: |
+          [[ "$RUN_ID" =~ ^[1-9][0-9]*$ ]]
+          run="$(gh api "repos/$GH_REPO/actions/runs/$RUN_ID")"
+          if ! jq -e --arg repository "$GH_REPO" '
+            .path == ".github/workflows/build.yml" and
+            .event == "workflow_dispatch" and .head_branch == "main" and
+            .head_repository.full_name == $repository and .status == "completed"
+          ' <<< "$run" >/dev/null; then
+            echo "::error::Run $RUN_ID is not a completed desktop build from this repository main branch"
+            exit 1
+          fi
+          names="$(gh api --paginate "repos/$GH_REPO/actions/runs/$RUN_ID/artifacts?per_page=100" --jq '.artifacts[] | select(.expired == false) | .name' | jq -Rsc 'split("\n") | map(select(length > 0))')"
+          matrix="$(jq -cn --argjson names "$names" '
+            {
+              "snake-linux-x64-appimage": "ubuntu-latest",
+              "snake-linux-arm64-appimage": "ubuntu-24.04-arm",
+              "snake-darwin-arm64-app.zip": "macos-latest",
+              "snake-darwin-x64-app.zip": "macos-26-intel",
+              "snake-darwin-arm64-unsigned": "macos-latest",
+              "snake-darwin-x64-unsigned": "macos-26-intel",
+              "snake-win32-x64-unsigned": "windows-latest",
+              "snake-win32-x64-msix": "windows-latest"
+            } as $runners |
+            [$names[] | select($runners[.] != null) | {artifact: ., runner: $runners[.]}]
+          ')"
+          if [ "$(jq length <<< "$matrix")" -eq 0 ]; then
+            echo "::error::No supported desktop app artifacts in run $RUN_ID"
+            exit 1
+          fi
+          echo "value=$matrix" >> "$GITHUB_OUTPUT"
+          echo "run-id=$RUN_ID" >> "$GITHUB_OUTPUT"
+
+  e2e:
+    needs: prepare
+    name: App smoke / ${{ matrix.artifact }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include: ${{ fromJSON(needs.prepare.outputs.matrix) }}
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 15
+    steps:
+      - name: Checkout E2E suite
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
+      - name: Install E2E dependencies
+        working-directory: test/e2e/desktop
+        run: npm ci
+
+      - name: Install Linux GUI dependencies
+        if: ${{ runner.os == 'Linux' }}
+        working-directory: test/e2e/desktop
+        run: npx playwright install-deps chromium
+
+      - name: Download packaged app
+        uses: actions/download-artifact@v4
+        with:
+          github-token: ${{ github.token }}
+          run-id: ${{ needs.prepare.outputs.run-id }}
+          name: ${{ matrix.artifact }}
+          path: artifact
+
+      - name: Extract app for smoke test
+        id: app
+        run: node scripts/find-snake-artifact.js artifact
+
+      - name: Exercise native IPC and multiplayer
+        working-directory: test/e2e/desktop
+        env:
+          SNAKE_E2E_BIN: ${{ steps.app.outputs.path }}
+          SNAKE_E2E_APPIMAGE: ${{ steps.app.outputs.appimage }}
+        run: |
+          if [ "$RUNNER_OS" = Linux ]; then
+            xvfb-run -a npm test
+          else
+            npm test
+          fi
+
+      - name: Upload app smoke results
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-${{ matrix.artifact }}
+          path: test/e2e/desktop/results
+          if-no-files-found: warn
+          retention-days: 14
