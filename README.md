@@ -4,6 +4,17 @@ Central GitHub Actions builds for `holepunchto/snake` and `holepunchto/snake-mob
 
 Start builds from this repository's Actions tab. Source checkouts, signing, artifacts, staging snapshots, store publication, and optional Slack notifications run here. Configure secrets in this repository's `release` environment.
 
+## Source repositories
+
+| CI workflow branch | Desktop source        | Mobile source                |
+| ------------------ | --------------------- | ---------------------------- |
+| `main`             | `holepunchto/snake`   | `holepunchto/snake-mobile`   |
+| `test`             | `geordangesink/snake` | `geordangesink/snake-mobile` |
+
+In Actions, select `test` under **Use workflow from** to build the personal repos. The `ref` input selects the branch, tag, or commit within the source repo and defaults to `main` on both workflow branches.
+
+Staging and store publishing on `test` use this repository's configured release destinations and remain opt-in.
+
 ## Workflows
 
 | Workflow                                                | Source default                    | Outputs                                                                                                       |
@@ -21,13 +32,13 @@ Native mobile builds default to both platforms and the `production` profile. `pr
 
 ## Repository setup
 
-1. Push these files to the `main` branch of `holepunchto/pear-snake-ci-build`, including the initial empty `ci/snapshot.json`.
+1. Push these files to the `main` branch of `geordangesink/pear-snake-ci-build`, including the initial empty `ci/snapshot.json`.
 2. Create its `release` environment and configure the secrets and variables below. Repository-level secrets and variables also work.
-3. Install the build GitHub App on this repository and `holepunchto/snake-mobile`. Grant Contents read on the private source repository, and Contents write plus Pull requests write on this repository for staging snapshots. Set `BUILD_APP_ID` and `BUILD_APP_PRIVATE_KEY` here.
+3. Optionally install a build GitHub App on this CI repository with Contents write and Pull requests write for staging snapshots. Set `BUILD_APP_CLIENT_ID` and `BUILD_APP_PRIVATE_KEY` here when using it. Staging otherwise uses `GITHUB_TOKEN`.
 4. Make the organization's `windows-signer` runner available to this repository, with its signing certificate installed. Ensure private shared Actions/packages grant this repository access if applicable.
 5. Set mobile application IDs and a build-number offset before the first store build.
 
-The private mobile checkout requires a token scoped to that source repository; this repository's automatic `GITHUB_TOKEN` cannot read it. The workflows generate short-lived GitHub App tokens for that purpose. [GitHub checkout documentation](https://github.com/actions/checkout/blob/main/README.md#checkout-multiple-repos-private).
+Source repositories are expected to be public. Desktop and mobile source checkouts use the automatic `GITHUB_TOKEN`; building does not require GitHub App credentials.
 
 Source build scripts remain in their source repositories. The migrated desktop release and mobile build/publish workflows are removed from the source repos. Source lint/test integration and desktop npm publishing remain independent.
 
@@ -37,10 +48,12 @@ Source build scripts remain in their source repositories. The migrated desktop r
 
 | Name                    | Kind     | Used for                                                        |
 | ----------------------- | -------- | --------------------------------------------------------------- |
-| `BUILD_APP_ID`          | Variable | GitHub App ID                                                   |
-| `BUILD_APP_PRIVATE_KEY` | Secret   | GitHub App PEM private key                                      |
+| `BUILD_APP_CLIENT_ID`   | Variable | Optional GitHub App client ID for staging                       |
+| `BUILD_APP_PRIVATE_KEY` | Secret   | Optional GitHub App PEM private key for staging                 |
 | `PEAR_PRIMARY_KEY`      | Secret   | 64-character hex Corestore identity for both apps' Pear staging |
 | `SLACK_WEBHOOK_URL`     | Secret   | Optional notifications when `notify` is selected                |
+
+The staging workflow accepts `BUILD_APP_ID` as a fallback for existing setups. New setups should use `BUILD_APP_CLIENT_ID` with the client ID from the GitHub App settings.
 
 ### Desktop signing
 

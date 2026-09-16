@@ -40,22 +40,12 @@ jobs:
     outputs:
       source-sha: ${{ steps.source.outputs.sha }}
     steps:
-      - name: Create source access token
-        id: source-token
-        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1
-        with:
-          app-id: ${{ vars.BUILD_APP_ID }}
-          private-key: ${{ secrets.BUILD_APP_PRIVATE_KEY }}
-          owner: holepunchto
-          repositories: snake-mobile
-          permission-contents: read
-
       - name: Checkout snake-mobile
         uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
         with:
           repository: holepunchto/snake-mobile
           ref: ${{ inputs.ref }}
-          token: ${{ steps.source-token.outputs.token }}
+          token: ${{ github.token }}
           persist-credentials: false
 
       - name: Set up Node.js

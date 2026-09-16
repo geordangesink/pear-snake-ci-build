@@ -71,22 +71,12 @@ jobs:
     outputs:
       commit: ${{ steps.source.outputs.commit }}
     steps:
-      - name: Create source access token
-        id: source-token
-        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1
-        with:
-          app-id: ${{ vars.BUILD_APP_ID }}
-          private-key: ${{ secrets.BUILD_APP_PRIVATE_KEY }}
-          owner: holepunchto
-          repositories: snake-mobile
-          permission-contents: read
-
       - name: Checkout snake-mobile
         uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
         with:
           repository: holepunchto/snake-mobile
           ref: ${{ inputs.ref }}
-          token: ${{ steps.source-token.outputs.token }}
+          token: ${{ github.token }}
           persist-credentials: false
 
       - name: Resolve source commit
@@ -112,22 +102,12 @@ jobs:
       P12_PASSWORD: ${{ secrets.P12_PASSWORD }}
       IOS_PROVISIONING_PROFILE_BASE64: ${{ secrets[inputs.profile == 'production' && 'IOS_PROVISIONING_PROFILE_BASE64' || 'IOS_ADHOC_PROVISIONING_PROFILE_BASE64'] }}
     steps:
-      - name: Create source access token
-        id: source-token
-        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1
-        with:
-          app-id: ${{ vars.BUILD_APP_ID }}
-          private-key: ${{ secrets.BUILD_APP_PRIVATE_KEY }}
-          owner: holepunchto
-          repositories: snake-mobile
-          permission-contents: read
-
       - name: Checkout snake-mobile
         uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
         with:
           repository: holepunchto/snake-mobile
           ref: ${{ needs.source.outputs.commit }}
-          token: ${{ steps.source-token.outputs.token }}
+          token: ${{ github.token }}
           persist-credentials: false
 
       - name: Checkout build configuration
@@ -197,22 +177,12 @@ jobs:
       ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
       ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
     steps:
-      - name: Create source access token
-        id: source-token
-        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1
-        with:
-          app-id: ${{ vars.BUILD_APP_ID }}
-          private-key: ${{ secrets.BUILD_APP_PRIVATE_KEY }}
-          owner: holepunchto
-          repositories: snake-mobile
-          permission-contents: read
-
       - name: Checkout snake-mobile
         uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
         with:
           repository: holepunchto/snake-mobile
           ref: ${{ needs.source.outputs.commit }}
-          token: ${{ steps.source-token.outputs.token }}
+          token: ${{ github.token }}
           persist-credentials: false
 
       - name: Checkout build configuration

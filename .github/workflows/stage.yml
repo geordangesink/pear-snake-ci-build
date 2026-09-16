@@ -34,10 +34,10 @@ jobs:
     steps:
       - name: Create GitHub App token
         id: build-app-token
-        if: ${{ vars.BUILD_APP_ID != '' }}
+        if: ${{ vars.BUILD_APP_CLIENT_ID != '' || vars.BUILD_APP_ID != '' }}
         uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1
         with:
-          app-id: ${{ vars.BUILD_APP_ID }}
+          client-id: ${{ vars.BUILD_APP_CLIENT_ID || vars.BUILD_APP_ID }}
           private-key: ${{ secrets.BUILD_APP_PRIVATE_KEY }}
           permission-contents: write
           permission-pull-requests: write
