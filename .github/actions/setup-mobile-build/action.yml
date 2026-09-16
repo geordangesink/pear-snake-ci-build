@@ -19,9 +19,6 @@ runs:
       shell: bash
       env:
         BUILD_PLATFORM: ${{ inputs.platform }}
-        BUILD_NUMBER_OFFSET: ${{ vars.BUILD_NUMBER_OFFSET || '0' }}
-        IOS_BUNDLE_ID: ${{ vars.IOS_BUNDLE_ID }}
-        ANDROID_PACKAGE: ${{ vars.ANDROID_PACKAGE }}
       run: |
         node scripts/prepare-build.js
         printf 'IOS_BUNDLE_ID=%s\nANDROID_PACKAGE=%s\n' "$IOS_BUNDLE_ID" "$ANDROID_PACKAGE" >> "$GITHUB_ENV"
