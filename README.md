@@ -1,6 +1,6 @@
 # pear-snake-ci-build
 
-Central GitHub Actions builds for `holepunchto/snake` and `holepunchto/snake-mobile`, following `pear-ci-build`.
+This test branch builds `geordangesink/snake` and `geordangesink/snake-mobile`. The `main` branch builds the corresponding `holepunchto` repositories, following `pear-ci-build`.
 
 Start builds from this repository's Actions tab. Source checkouts, signing, artifacts, staging snapshots, store publication, and optional Slack notifications run here. Configure secrets in this repository's `release` environment.
 

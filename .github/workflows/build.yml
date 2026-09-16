@@ -60,7 +60,7 @@ jobs:
       - name: Checkout snake
         uses: actions/checkout@v4
         with:
-          repository: holepunchto/snake
+          repository: geordangesink/snake
           ref: ${{ inputs.ref }}
           persist-credentials: false
       - name: Resolve source commit
@@ -77,7 +77,7 @@ jobs:
       - name: Checkout snake
         uses: actions/checkout@v4
         with:
-          repository: holepunchto/snake
+          repository: geordangesink/snake
           ref: ${{ needs.prepare.outputs.sha }}
           token: ${{ github.token }}
           persist-credentials: false
@@ -115,7 +115,7 @@ jobs:
       - name: Checkout snake
         uses: actions/checkout@v4
         with:
-          repository: holepunchto/snake
+          repository: geordangesink/snake
           ref: ${{ needs.prepare.outputs.sha }}
           token: ${{ github.token }}
           persist-credentials: false
@@ -153,7 +153,7 @@ jobs:
       - name: Checkout snake
         uses: actions/checkout@v4
         with:
-          repository: holepunchto/snake
+          repository: geordangesink/snake
           ref: ${{ needs.prepare.outputs.sha }}
           token: ${{ github.token }}
           persist-credentials: false
@@ -195,7 +195,7 @@ jobs:
       - name: Checkout snake
         uses: actions/checkout@v4
         with:
-          repository: holepunchto/snake
+          repository: geordangesink/snake
           ref: ${{ needs.prepare.outputs.sha }}
           token: ${{ github.token }}
           persist-credentials: false
@@ -237,7 +237,7 @@ jobs:
       - name: Checkout snake
         uses: actions/checkout@v4
         with:
-          repository: holepunchto/snake
+          repository: geordangesink/snake
           ref: ${{ needs.prepare.outputs.sha }}
           token: ${{ github.token }}
           persist-credentials: false
@@ -285,7 +285,7 @@ jobs:
       - name: Checkout snake source
         uses: actions/checkout@v4
         with:
-          repository: holepunchto/snake
+          repository: geordangesink/snake
           ref: ${{ needs.prepare.outputs.sha }}
           path: snake-source
           persist-credentials: false

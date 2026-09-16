@@ -43,7 +43,7 @@ jobs:
       - name: Checkout snake-mobile
         uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
         with:
-          repository: holepunchto/snake-mobile
+          repository: geordangesink/snake-mobile
           ref: ${{ inputs.ref }}
           token: ${{ github.token }}
           persist-credentials: false
@@ -82,7 +82,7 @@ jobs:
           const sha = execFileSync('git', ['rev-parse', 'HEAD'], { encoding: 'utf8' }).trim()
           const pkg = JSON.parse(fs.readFileSync('package.json', 'utf8'))
           const metadata = {
-            repository: 'holepunchto/snake-mobile',
+            repository: 'geordangesink/snake-mobile',
             ref: process.env.SOURCE_REF,
             sha,
             version: pkg.version,
