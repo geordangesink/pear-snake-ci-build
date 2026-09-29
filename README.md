@@ -16,7 +16,9 @@ Start builds from this repository's **Actions** tab. Each build resolves `ref` o
 
 ### Desktop
 
-Select the platforms to build; all default to off, matching `pear-ci-build`. Outputs are Linux AppImage, Snap, and Flatpak source archives; macOS DMG and app ZIP; and signed Windows MSIX.
+Select the platforms to build; all default to off, matching `pear-ci-build`. Outputs are Linux AppImage, Snap, and Flatpak source archives; signed and notarized macOS DMG and app ZIP; and signed Windows MSIX.
+
+Windows defaults to `windows-signing: self-signed` on a hosted runner. Users must trust the included public certificate once before installing. This needs no paid signing certificate or Windows developer account. Select `cert-sha1` to use an existing certificate on a `windows-signer` runner.
 
 Enable `unsigned` for testing without desktop signing credentials. macOS produces an unsigned DMG and app ZIP; Windows produces a portable ZIP on a hosted runner. These artifact names end in `-unsigned`. Linux outputs are unchanged. Unsigned builds cannot stage updates.
 
@@ -38,7 +40,7 @@ See [Releasing Snake Mobile](RELEASING.md) for versioning, credentials, and stor
 
 Configure the `release` environment here, or use repository-level secrets and variables. Source repositories must be public; checkout uses `GITHUB_TOKEN`.
 
-For signed Windows builds, register a `windows-signer` runner with the signing certificate installed. Native mobile builds use Xcode 26.2 on `macos-26` and Java 17 on `ubuntu-24.04`.
+Native mobile builds use Xcode 26.2 on `macos-26` and Java 17 on `ubuntu-24.04`.
 
 ### Pear staging
 
@@ -61,17 +63,15 @@ Staging uses `GITHUB_TOKEN` by default. An optional GitHub App with Contents wri
 
 ### Desktop signing
 
-Use the same secret names as `pear-ci-build`:
+| Purpose | Secrets |
+| ------- | ------- |
+| macOS Developer ID signing | `MACOS_CERTIFICATE_BASE64`, `MACOS_P12_PASSWORD`, `MACOS_CODESIGN_IDENTITY` |
+| macOS notarization, preferred | `APPSTORE_API_PRIVATE_KEY`, `APPSTORE_API_KEY_ID`, `APPSTORE_ISSUER_ID` |
+| macOS notarization, fallback | `MACOS_APPLE_ID`, `MACOS_APPLE_PASSWORD`, `MACOS_APPLE_TEAM_ID` |
+| Windows self-signed MSIX | `WINDOWS_CERTIFICATE_BASE64`, `WINDOWS_CERTIFICATE_PASSWORD` |
+| Windows existing signer | `WINDOWS_CERT_SHA1` |
 
-- `MACOS_CERTIFICATE_BASE64`
-- `MACOS_P12_PASSWORD`
-- `MACOS_CODESIGN_IDENTITY`
-- `MACOS_APPLE_ID`
-- `MACOS_APPLE_PASSWORD`
-- `MACOS_APPLE_TEAM_ID`
-- `WINDOWS_CERT_SHA1`
-
-`MACOS_CERTIFICATE_BASE64` must contain a base64-encoded `.p12` export of the macOS Developer ID Application certificate **and its private key**. Set its password and matching identity in the corresponding secrets. The mobile distribution certificate is separate. Signed macOS builds check all six desktop secrets before installing dependencies.
+See [Desktop signing](DESKTOP_SIGNING.md) for certificate export, secret setup, and Windows installation. macOS requires a Developer ID Application certificate and its private key, separate from the mobile distribution certificate. It reuses the App Store Connect team API key when all three API secrets are configured; otherwise it requires all three Apple ID secrets.
 
 ### Mobile signing and publishing
 

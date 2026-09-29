@@ -16,6 +16,13 @@ on:
         description: Build unsigned desktop apps for testing (cannot stage)
         type: boolean
         default: false
+      windows-signing:
+        description: Self-signed requires users to trust the bundled certificate
+        type: choice
+        default: self-signed
+        options:
+          - self-signed
+          - cert-sha1
       upgrade-key:
         description: Value for package.json upgrade field
         type: string
@@ -178,9 +185,10 @@ jobs:
     if: ${{ !cancelled() && !failure() && inputs.run-macos }}
     runs-on: macos-latest
     environment: release
-    timeout-minutes: 30
+    timeout-minutes: 60
     steps:
       - name: Validate macOS signing secrets
+        id: signing
         if: ${{ !inputs.unsigned }}
         shell: bash
         env:
@@ -190,9 +198,19 @@ jobs:
           MACOS_APPLE_ID: ${{ secrets.MACOS_APPLE_ID }}
           MACOS_APPLE_PASSWORD: ${{ secrets.MACOS_APPLE_PASSWORD }}
           MACOS_APPLE_TEAM_ID: ${{ secrets.MACOS_APPLE_TEAM_ID }}
+          APPSTORE_API_KEY_ID: ${{ secrets.APPSTORE_API_KEY_ID }}
+          APPSTORE_API_PRIVATE_KEY: ${{ secrets.APPSTORE_API_PRIVATE_KEY }}
+          APPSTORE_ISSUER_ID: ${{ secrets.APPSTORE_ISSUER_ID }}
         run: |
           missing=0
-          for name in MACOS_CERTIFICATE_BASE64 MACOS_P12_PASSWORD MACOS_CODESIGN_IDENTITY MACOS_APPLE_ID MACOS_APPLE_PASSWORD MACOS_APPLE_TEAM_ID; do
+          required=(MACOS_CERTIFICATE_BASE64 MACOS_P12_PASSWORD MACOS_CODESIGN_IDENTITY)
+          if [[ -n "$APPSTORE_API_KEY_ID" && -n "$APPSTORE_API_PRIVATE_KEY" && -n "$APPSTORE_ISSUER_ID" ]]; then
+            echo 'notarization-method=appstore_connect' >> "$GITHUB_OUTPUT"
+          else
+            echo 'notarization-method=apple_id_password' >> "$GITHUB_OUTPUT"
+            required+=(MACOS_APPLE_ID MACOS_APPLE_PASSWORD MACOS_APPLE_TEAM_ID)
+          fi
+          for name in "${required[@]}"; do
             if [[ -z "${!name}" ]]; then
               echo "::error::Missing Actions secret $name. Configure desktop signing or select unsigned for a test build."
               missing=1
@@ -206,6 +224,20 @@ jobs:
           ref: ${{ needs.prepare.outputs.sha }}
           token: ${{ github.token }}
           persist-credentials: false
+      - name: Checkout macOS build tools
+        if: ${{ !inputs.unsigned }}
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          path: .snake-ci
+          sparse-checkout: scripts/sign-macos-artifacts.sh
+          sparse-checkout-cone-mode: false
+          persist-credentials: false
+      - name: Prepare macOS build tools
+        if: ${{ !inputs.unsigned }}
+        run: |
+          cp .snake-ci/scripts/sign-macos-artifacts.sh "$RUNNER_TEMP/sign-macos-artifacts.sh"
+          rm -rf .snake-ci
       - name: Install dependencies
         uses: holepunchto/actions/node-base-extended@v1
         with:
@@ -226,16 +258,35 @@ jobs:
         with:
           channel: ${{ env.CHANNEL }}
           upgrade_key: ${{ inputs.upgrade-key }}
-          macos_dmg: '*.dmg'
-          macos_dmg_artifact_name: snake-darwin-arm64-dmg
-          macos_app: snake-darwin-arm64-app.zip
           macos_certificate_base64: ${{ secrets.MACOS_CERTIFICATE_BASE64 }}
           macos_p12_password: ${{ secrets.MACOS_P12_PASSWORD }}
           macos_codesign_identity: ${{ secrets.MACOS_CODESIGN_IDENTITY }}
-          macos_notarization_method: apple_id_password
+          macos_notarization_method: ${{ steps.signing.outputs.notarization-method }}
           macos_apple_id: ${{ secrets.MACOS_APPLE_ID }}
           macos_apple_password: ${{ secrets.MACOS_APPLE_PASSWORD }}
           macos_apple_team_id: ${{ secrets.MACOS_APPLE_TEAM_ID }}
+          macos_api_key_base64: ${{ secrets.APPSTORE_API_PRIVATE_KEY }}
+          macos_api_key_id: ${{ secrets.APPSTORE_API_KEY_ID }}
+          macos_api_issuer: ${{ secrets.APPSTORE_ISSUER_ID }}
+      - name: Sign and verify macOS artifacts
+        if: ${{ !inputs.unsigned }}
+        env:
+          MACOS_CODESIGN_IDENTITY: ${{ secrets.MACOS_CODESIGN_IDENTITY }}
+        run: bash "$RUNNER_TEMP/sign-macos-artifacts.sh" arm64
+      - name: Upload signed macOS DMG
+        if: ${{ !inputs.unsigned }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: snake-darwin-arm64-dmg
+          path: out/make/**/*.dmg
+          if-no-files-found: error
+      - name: Upload signed macOS app
+        if: ${{ !inputs.unsigned }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: snake-darwin-arm64-app.zip
+          path: ${{ runner.temp }}/snake-darwin-arm64-app.zip
+          if-no-files-found: error
       - name: Build unsigned macOS app
         if: ${{ inputs.unsigned }}
         uses: holepunchto/actions/run-npm-script@v1
@@ -267,9 +318,10 @@ jobs:
     if: ${{ !cancelled() && !failure() && inputs.run-macos-intel }}
     runs-on: macos-26-intel
     environment: release
-    timeout-minutes: 30
+    timeout-minutes: 60
     steps:
       - name: Validate macOS signing secrets
+        id: signing
         if: ${{ !inputs.unsigned }}
         shell: bash
         env:
@@ -279,9 +331,19 @@ jobs:
           MACOS_APPLE_ID: ${{ secrets.MACOS_APPLE_ID }}
           MACOS_APPLE_PASSWORD: ${{ secrets.MACOS_APPLE_PASSWORD }}
           MACOS_APPLE_TEAM_ID: ${{ secrets.MACOS_APPLE_TEAM_ID }}
+          APPSTORE_API_KEY_ID: ${{ secrets.APPSTORE_API_KEY_ID }}
+          APPSTORE_API_PRIVATE_KEY: ${{ secrets.APPSTORE_API_PRIVATE_KEY }}
+          APPSTORE_ISSUER_ID: ${{ secrets.APPSTORE_ISSUER_ID }}
         run: |
           missing=0
-          for name in MACOS_CERTIFICATE_BASE64 MACOS_P12_PASSWORD MACOS_CODESIGN_IDENTITY MACOS_APPLE_ID MACOS_APPLE_PASSWORD MACOS_APPLE_TEAM_ID; do
+          required=(MACOS_CERTIFICATE_BASE64 MACOS_P12_PASSWORD MACOS_CODESIGN_IDENTITY)
+          if [[ -n "$APPSTORE_API_KEY_ID" && -n "$APPSTORE_API_PRIVATE_KEY" && -n "$APPSTORE_ISSUER_ID" ]]; then
+            echo 'notarization-method=appstore_connect' >> "$GITHUB_OUTPUT"
+          else
+            echo 'notarization-method=apple_id_password' >> "$GITHUB_OUTPUT"
+            required+=(MACOS_APPLE_ID MACOS_APPLE_PASSWORD MACOS_APPLE_TEAM_ID)
+          fi
+          for name in "${required[@]}"; do
             if [[ -z "${!name}" ]]; then
               echo "::error::Missing Actions secret $name. Configure desktop signing or select unsigned for a test build."
               missing=1
@@ -295,6 +357,20 @@ jobs:
           ref: ${{ needs.prepare.outputs.sha }}
           token: ${{ github.token }}
           persist-credentials: false
+      - name: Checkout macOS build tools
+        if: ${{ !inputs.unsigned }}
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          path: .snake-ci
+          sparse-checkout: scripts/sign-macos-artifacts.sh
+          sparse-checkout-cone-mode: false
+          persist-credentials: false
+      - name: Prepare macOS build tools
+        if: ${{ !inputs.unsigned }}
+        run: |
+          cp .snake-ci/scripts/sign-macos-artifacts.sh "$RUNNER_TEMP/sign-macos-artifacts.sh"
+          rm -rf .snake-ci
       - name: Install dependencies
         uses: holepunchto/actions/node-base-extended@v1
         with:
@@ -315,16 +391,35 @@ jobs:
         with:
           channel: ${{ env.CHANNEL }}
           upgrade_key: ${{ inputs.upgrade-key }}
-          macos_dmg: '*.dmg'
-          macos_dmg_artifact_name: snake-darwin-x64-dmg
-          macos_app: snake-darwin-x64-app.zip
           macos_certificate_base64: ${{ secrets.MACOS_CERTIFICATE_BASE64 }}
           macos_p12_password: ${{ secrets.MACOS_P12_PASSWORD }}
           macos_codesign_identity: ${{ secrets.MACOS_CODESIGN_IDENTITY }}
-          macos_notarization_method: apple_id_password
+          macos_notarization_method: ${{ steps.signing.outputs.notarization-method }}
           macos_apple_id: ${{ secrets.MACOS_APPLE_ID }}
           macos_apple_password: ${{ secrets.MACOS_APPLE_PASSWORD }}
           macos_apple_team_id: ${{ secrets.MACOS_APPLE_TEAM_ID }}
+          macos_api_key_base64: ${{ secrets.APPSTORE_API_PRIVATE_KEY }}
+          macos_api_key_id: ${{ secrets.APPSTORE_API_KEY_ID }}
+          macos_api_issuer: ${{ secrets.APPSTORE_ISSUER_ID }}
+      - name: Sign and verify macOS artifacts
+        if: ${{ !inputs.unsigned }}
+        env:
+          MACOS_CODESIGN_IDENTITY: ${{ secrets.MACOS_CODESIGN_IDENTITY }}
+        run: bash "$RUNNER_TEMP/sign-macos-artifacts.sh" x64
+      - name: Upload signed macOS DMG
+        if: ${{ !inputs.unsigned }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: snake-darwin-x64-dmg
+          path: out/make/**/*.dmg
+          if-no-files-found: error
+      - name: Upload signed macOS app
+        if: ${{ !inputs.unsigned }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: snake-darwin-x64-app.zip
+          path: ${{ runner.temp }}/snake-darwin-x64-app.zip
+          if-no-files-found: error
       - name: Build unsigned macOS app
         if: ${{ inputs.unsigned }}
         uses: holepunchto/actions/run-npm-script@v1
@@ -354,10 +449,29 @@ jobs:
   build-win32-x64:
     needs: prepare
     if: ${{ !cancelled() && !failure() && inputs.run-windows-x64 }}
-    runs-on: ${{ inputs.unsigned && 'windows-latest' || 'windows-signer' }}
+    runs-on: ${{ !inputs.unsigned && inputs.windows-signing == 'cert-sha1' && 'windows-signer' || 'windows-latest' }}
     environment: release
     timeout-minutes: 30
     steps:
+      - name: Validate Windows signing secrets
+        if: ${{ !inputs.unsigned }}
+        shell: pwsh
+        env:
+          SIGNING_METHOD: ${{ inputs.windows-signing }}
+          WINDOWS_CERTIFICATE_BASE64: ${{ secrets.WINDOWS_CERTIFICATE_BASE64 }}
+          WINDOWS_CERTIFICATE_PASSWORD: ${{ secrets.WINDOWS_CERTIFICATE_PASSWORD }}
+          WINDOWS_CERT_SHA1: ${{ secrets.WINDOWS_CERT_SHA1 }}
+        run: |
+          $required = if ($env:SIGNING_METHOD -eq 'cert-sha1') {
+            @('WINDOWS_CERT_SHA1')
+          } else {
+            @('WINDOWS_CERTIFICATE_BASE64', 'WINDOWS_CERTIFICATE_PASSWORD')
+          }
+          foreach ($name in $required) {
+            if (-not [Environment]::GetEnvironmentVariable($name)) {
+              throw "Missing Actions secret $name. See DESKTOP_SIGNING.md or select unsigned."
+            }
+          }
       - name: Checkout snake
         uses: actions/checkout@v4
         with:
@@ -365,6 +479,30 @@ jobs:
           ref: ${{ needs.prepare.outputs.sha }}
           token: ${{ github.token }}
           persist-credentials: false
+      - name: Checkout Windows signing tools
+        if: ${{ !inputs.unsigned }}
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          path: .snake-ci
+          sparse-checkout: |
+            scripts/prepare-windows-signing.ps1
+            scripts/verify-windows-signing.ps1
+          sparse-checkout-cone-mode: false
+          persist-credentials: false
+      - name: Prepare Windows signing
+        id: signing
+        if: ${{ !inputs.unsigned }}
+        shell: pwsh
+        env:
+          SIGNING_METHOD: ${{ inputs.windows-signing }}
+          WINDOWS_CERTIFICATE_BASE64: ${{ secrets.WINDOWS_CERTIFICATE_BASE64 }}
+          WINDOWS_CERTIFICATE_PASSWORD: ${{ secrets.WINDOWS_CERTIFICATE_PASSWORD }}
+          WINDOWS_CERT_SHA1: ${{ secrets.WINDOWS_CERT_SHA1 }}
+        run: |
+          Copy-Item .snake-ci/scripts/*-windows-signing.ps1 $env:RUNNER_TEMP
+          Remove-Item .snake-ci -Recurse -Force
+          & "$env:RUNNER_TEMP/prepare-windows-signing.ps1" -Method $env:SIGNING_METHOD
       - name: Install dependencies
         uses: holepunchto/actions/node-base-extended@v1
         with:
@@ -380,10 +518,22 @@ jobs:
         with:
           channel: ${{ env.CHANNEL }}
           upgrade_key: ${{ inputs.upgrade-key }}
-          windows_msix: '*.msix'
-          windows_msix_artifact_name: snake-win32-x64-msix
           windows_signing_method: cert_sha1
-          windows_cert_sha1: ${{ secrets.WINDOWS_CERT_SHA1 }}
+          windows_cert_sha1: ${{ steps.signing.outputs.thumbprint }}
+      - name: Verify Windows package signature
+        if: ${{ !inputs.unsigned }}
+        shell: pwsh
+        env:
+          SIGNING_METHOD: ${{ inputs.windows-signing }}
+          WINDOWS_CERT_SHA1: ${{ steps.signing.outputs.thumbprint }}
+        run: '& "$env:RUNNER_TEMP/verify-windows-signing.ps1" -Method $env:SIGNING_METHOD'
+      - name: Upload signed Windows app
+        if: ${{ !inputs.unsigned }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: snake-win32-x64-msix
+          path: ${{ runner.temp }}/windows-signing-public/*
+          if-no-files-found: error
       - name: Build unsigned Windows app
         if: ${{ inputs.unsigned }}
         shell: bash
@@ -403,6 +553,12 @@ jobs:
           name: snake-win32-x64-unsigned
           path: out/make/zip/win32/x64/*.zip
           if-no-files-found: error
+      - name: Remove imported Windows signing key
+        if: ${{ always() && !inputs.unsigned && inputs.windows-signing != 'cert-sha1' && steps.signing.outputs.thumbprint != '' }}
+        shell: pwsh
+        env:
+          WINDOWS_CERT_SHA1: ${{ steps.signing.outputs.thumbprint }}
+        run: Remove-Item "Cert:\CurrentUser\My\$env:WINDOWS_CERT_SHA1" -DeleteKey -ErrorAction SilentlyContinue
   stage:
     needs:
       - prepare

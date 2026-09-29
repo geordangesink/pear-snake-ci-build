@@ -2,4 +2,6 @@ node_modules
 .DS_Store
 out
 dist
-
+*.pfx
+*.p12
+*.key
