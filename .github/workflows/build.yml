@@ -12,17 +12,6 @@ on:
           - dev
           - stage
           - production
-      unsigned:
-        description: Build unsigned desktop apps for testing (cannot stage)
-        type: boolean
-        default: false
-      windows-signing:
-        description: Self-signed requires users to trust the bundled certificate
-        type: choice
-        default: self-signed
-        options:
-          - self-signed
-          - cert-sha1
       upgrade-key:
         description: Value for package.json upgrade field
         type: string
@@ -65,11 +54,6 @@ jobs:
       sha: ${{ steps.source.outputs.sha }}
       upgrade-link: ${{ steps.source.outputs.upgrade-link }}
     steps:
-      - name: Validate build options
-        if: ${{ inputs.unsigned && inputs.run-stage }}
-        run: |
-          echo "::error::Unsigned test builds cannot be staged. Disable unsigned or run-stage."
-          exit 1
       - name: Checkout snake
         uses: actions/checkout@v4
         with:
@@ -189,7 +173,6 @@ jobs:
     steps:
       - name: Validate macOS signing secrets
         id: signing
-        if: ${{ !inputs.unsigned }}
         shell: bash
         env:
           MACOS_CERTIFICATE_BASE64: ${{ secrets.MACOS_CERTIFICATE_BASE64 }}
@@ -212,7 +195,7 @@ jobs:
           fi
           for name in "${required[@]}"; do
             if [[ -z "${!name}" ]]; then
-              echo "::error::Missing Actions secret $name. Configure desktop signing or select unsigned for a test build."
+              echo "::error::Missing Actions secret $name. Configure desktop signing."
               missing=1
             fi
           done
@@ -225,7 +208,6 @@ jobs:
           token: ${{ github.token }}
           persist-credentials: false
       - name: Checkout macOS build tools
-        if: ${{ !inputs.unsigned }}
         uses: actions/checkout@v4
         with:
           ref: ${{ github.sha }}
@@ -234,7 +216,6 @@ jobs:
           sparse-checkout-cone-mode: false
           persist-credentials: false
       - name: Prepare macOS build tools
-        if: ${{ !inputs.unsigned }}
         run: |
           cp .snake-ci/scripts/sign-macos-artifacts.sh "$RUNNER_TEMP/sign-macos-artifacts.sh"
           rm -rf .snake-ci
@@ -253,7 +234,6 @@ jobs:
       - name: Setup bare
         uses: holepunchto/actions/setup-bare@v1
       - name: Build macos arm64
-        if: ${{ !inputs.unsigned }}
         uses: holepunchto/actions/make-pear-app@v1
         with:
           channel: ${{ env.CHANNEL }}
@@ -269,49 +249,20 @@ jobs:
           macos_api_key_id: ${{ secrets.APPSTORE_API_KEY_ID }}
           macos_api_issuer: ${{ secrets.APPSTORE_ISSUER_ID }}
       - name: Sign and verify macOS artifacts
-        if: ${{ !inputs.unsigned }}
         env:
           MACOS_CODESIGN_IDENTITY: ${{ secrets.MACOS_CODESIGN_IDENTITY }}
         run: bash "$RUNNER_TEMP/sign-macos-artifacts.sh" arm64
       - name: Upload signed macOS DMG
-        if: ${{ !inputs.unsigned }}
         uses: actions/upload-artifact@v4
         with:
           name: snake-darwin-arm64-dmg
           path: out/make/**/*.dmg
           if-no-files-found: error
       - name: Upload signed macOS app
-        if: ${{ !inputs.unsigned }}
         uses: actions/upload-artifact@v4
         with:
           name: snake-darwin-arm64-app.zip
           path: ${{ runner.temp }}/snake-darwin-arm64-app.zip
-          if-no-files-found: error
-      - name: Build unsigned macOS app
-        if: ${{ inputs.unsigned }}
-        uses: holepunchto/actions/run-npm-script@v1
-        with:
-          script: make
-        env:
-          NODE_AUTH_TOKEN: ${{ github.token }}
-          NODE_ENV: production
-          UPGRADE_KEY: ${{ inputs.upgrade-key }}
-          MAC_CODESIGN_IDENTITY: ''
-          KEYCHAIN_PROFILE: ''
-      - name: Archive unsigned macOS app
-        if: ${{ inputs.unsigned }}
-        run: |
-          ditto -c -k --sequesterRsrc --keepParent \
-            out/*-darwin-arm64/*.app \
-            "$RUNNER_TEMP/snake-darwin-arm64-unsigned-app.zip"
-      - name: Upload unsigned macOS artifacts
-        if: ${{ inputs.unsigned }}
-        uses: actions/upload-artifact@v4
-        with:
-          name: snake-darwin-arm64-unsigned
-          path: |
-            out/make/**/*.dmg
-            ${{ runner.temp }}/snake-darwin-arm64-unsigned-app.zip
           if-no-files-found: error
   build-macos-x64:
     needs: prepare
@@ -322,7 +273,6 @@ jobs:
     steps:
       - name: Validate macOS signing secrets
         id: signing
-        if: ${{ !inputs.unsigned }}
         shell: bash
         env:
           MACOS_CERTIFICATE_BASE64: ${{ secrets.MACOS_CERTIFICATE_BASE64 }}
@@ -345,7 +295,7 @@ jobs:
           fi
           for name in "${required[@]}"; do
             if [[ -z "${!name}" ]]; then
-              echo "::error::Missing Actions secret $name. Configure desktop signing or select unsigned for a test build."
+              echo "::error::Missing Actions secret $name. Configure desktop signing."
               missing=1
             fi
           done
@@ -358,7 +308,6 @@ jobs:
           token: ${{ github.token }}
           persist-credentials: false
       - name: Checkout macOS build tools
-        if: ${{ !inputs.unsigned }}
         uses: actions/checkout@v4
         with:
           ref: ${{ github.sha }}
@@ -367,7 +316,6 @@ jobs:
           sparse-checkout-cone-mode: false
           persist-credentials: false
       - name: Prepare macOS build tools
-        if: ${{ !inputs.unsigned }}
         run: |
           cp .snake-ci/scripts/sign-macos-artifacts.sh "$RUNNER_TEMP/sign-macos-artifacts.sh"
           rm -rf .snake-ci
@@ -386,7 +334,6 @@ jobs:
       - name: Setup bare
         uses: holepunchto/actions/setup-bare@v1
       - name: Build macos x64
-        if: ${{ !inputs.unsigned }}
         uses: holepunchto/actions/make-pear-app@v1
         with:
           channel: ${{ env.CHANNEL }}
@@ -402,75 +349,35 @@ jobs:
           macos_api_key_id: ${{ secrets.APPSTORE_API_KEY_ID }}
           macos_api_issuer: ${{ secrets.APPSTORE_ISSUER_ID }}
       - name: Sign and verify macOS artifacts
-        if: ${{ !inputs.unsigned }}
         env:
           MACOS_CODESIGN_IDENTITY: ${{ secrets.MACOS_CODESIGN_IDENTITY }}
         run: bash "$RUNNER_TEMP/sign-macos-artifacts.sh" x64
       - name: Upload signed macOS DMG
-        if: ${{ !inputs.unsigned }}
         uses: actions/upload-artifact@v4
         with:
           name: snake-darwin-x64-dmg
           path: out/make/**/*.dmg
           if-no-files-found: error
       - name: Upload signed macOS app
-        if: ${{ !inputs.unsigned }}
         uses: actions/upload-artifact@v4
         with:
           name: snake-darwin-x64-app.zip
           path: ${{ runner.temp }}/snake-darwin-x64-app.zip
           if-no-files-found: error
-      - name: Build unsigned macOS app
-        if: ${{ inputs.unsigned }}
-        uses: holepunchto/actions/run-npm-script@v1
-        with:
-          script: make
-        env:
-          NODE_AUTH_TOKEN: ${{ github.token }}
-          NODE_ENV: production
-          UPGRADE_KEY: ${{ inputs.upgrade-key }}
-          MAC_CODESIGN_IDENTITY: ''
-          KEYCHAIN_PROFILE: ''
-      - name: Archive unsigned macOS app
-        if: ${{ inputs.unsigned }}
-        run: |
-          ditto -c -k --sequesterRsrc --keepParent \
-            out/*-darwin-x64/*.app \
-            "$RUNNER_TEMP/snake-darwin-x64-unsigned-app.zip"
-      - name: Upload unsigned macOS artifacts
-        if: ${{ inputs.unsigned }}
-        uses: actions/upload-artifact@v4
-        with:
-          name: snake-darwin-x64-unsigned
-          path: |
-            out/make/**/*.dmg
-            ${{ runner.temp }}/snake-darwin-x64-unsigned-app.zip
-          if-no-files-found: error
   build-win32-x64:
     needs: prepare
     if: ${{ !cancelled() && !failure() && inputs.run-windows-x64 }}
-    runs-on: ${{ !inputs.unsigned && inputs.windows-signing == 'cert-sha1' && 'windows-signer' || 'windows-latest' }}
+    runs-on: windows-signer
     environment: release
     timeout-minutes: 30
     steps:
       - name: Validate Windows signing secrets
-        if: ${{ !inputs.unsigned }}
         shell: pwsh
         env:
-          SIGNING_METHOD: ${{ inputs.windows-signing }}
-          WINDOWS_CERTIFICATE_BASE64: ${{ secrets.WINDOWS_CERTIFICATE_BASE64 }}
-          WINDOWS_CERTIFICATE_PASSWORD: ${{ secrets.WINDOWS_CERTIFICATE_PASSWORD }}
           WINDOWS_CERT_SHA1: ${{ secrets.WINDOWS_CERT_SHA1 }}
         run: |
-          $required = if ($env:SIGNING_METHOD -eq 'cert-sha1') {
-            @('WINDOWS_CERT_SHA1')
-          } else {
-            @('WINDOWS_CERTIFICATE_BASE64', 'WINDOWS_CERTIFICATE_PASSWORD')
-          }
-          foreach ($name in $required) {
-            if (-not [Environment]::GetEnvironmentVariable($name)) {
-              throw "Missing Actions secret $name. See DESKTOP_SIGNING.md or select unsigned."
-            }
+          if (-not $env:WINDOWS_CERT_SHA1) {
+            throw 'Missing Actions secret WINDOWS_CERT_SHA1. See DESKTOP_SIGNING.md.'
           }
       - name: Checkout snake
         uses: actions/checkout@v4
@@ -480,7 +387,6 @@ jobs:
           token: ${{ github.token }}
           persist-credentials: false
       - name: Checkout Windows signing tools
-        if: ${{ !inputs.unsigned }}
         uses: actions/checkout@v4
         with:
           ref: ${{ github.sha }}
@@ -492,17 +398,13 @@ jobs:
           persist-credentials: false
       - name: Prepare Windows signing
         id: signing
-        if: ${{ !inputs.unsigned }}
         shell: pwsh
         env:
-          SIGNING_METHOD: ${{ inputs.windows-signing }}
-          WINDOWS_CERTIFICATE_BASE64: ${{ secrets.WINDOWS_CERTIFICATE_BASE64 }}
-          WINDOWS_CERTIFICATE_PASSWORD: ${{ secrets.WINDOWS_CERTIFICATE_PASSWORD }}
           WINDOWS_CERT_SHA1: ${{ secrets.WINDOWS_CERT_SHA1 }}
         run: |
           Copy-Item .snake-ci/scripts/*-windows-signing.ps1 $env:RUNNER_TEMP
           Remove-Item .snake-ci -Recurse -Force
-          & "$env:RUNNER_TEMP/prepare-windows-signing.ps1" -Method $env:SIGNING_METHOD
+          & "$env:RUNNER_TEMP/prepare-windows-signing.ps1"
       - name: Install dependencies
         uses: holepunchto/actions/node-base-extended@v1
         with:
@@ -513,7 +415,6 @@ jobs:
       - name: Setup bare
         uses: holepunchto/actions/setup-bare@v1
       - name: Build windows x64
-        if: ${{ !inputs.unsigned }}
         uses: holepunchto/actions/make-pear-app@v1
         with:
           channel: ${{ env.CHANNEL }}
@@ -521,44 +422,16 @@ jobs:
           windows_signing_method: cert_sha1
           windows_cert_sha1: ${{ steps.signing.outputs.thumbprint }}
       - name: Verify Windows package signature
-        if: ${{ !inputs.unsigned }}
         shell: pwsh
         env:
-          SIGNING_METHOD: ${{ inputs.windows-signing }}
           WINDOWS_CERT_SHA1: ${{ steps.signing.outputs.thumbprint }}
-        run: '& "$env:RUNNER_TEMP/verify-windows-signing.ps1" -Method $env:SIGNING_METHOD'
+        run: '& "$env:RUNNER_TEMP/verify-windows-signing.ps1"'
       - name: Upload signed Windows app
-        if: ${{ !inputs.unsigned }}
         uses: actions/upload-artifact@v4
         with:
           name: snake-win32-x64-msix
-          path: ${{ runner.temp }}/windows-signing-public/*
+          path: out/make/**/*.msix
           if-no-files-found: error
-      - name: Build unsigned Windows app
-        if: ${{ inputs.unsigned }}
-        shell: bash
-        env:
-          NODE_AUTH_TOKEN: ${{ github.token }}
-          NODE_ENV: production
-          UPGRADE_KEY: ${{ inputs.upgrade-key }}
-          WINDOWS_SIGN_HOOK: ''
-          WINDOWS_CERT_SHA1: ''
-        run: |
-          sfw="$(command -v sfw)"
-          "$sfw" npm.cmd run make -- --targets=@electron-forge/maker-zip --platform=win32 --arch=x64
-      - name: Upload unsigned Windows app
-        if: ${{ inputs.unsigned }}
-        uses: actions/upload-artifact@v4
-        with:
-          name: snake-win32-x64-unsigned
-          path: out/make/zip/win32/x64/*.zip
-          if-no-files-found: error
-      - name: Remove imported Windows signing key
-        if: ${{ always() && !inputs.unsigned && inputs.windows-signing != 'cert-sha1' && steps.signing.outputs.thumbprint != '' }}
-        shell: pwsh
-        env:
-          WINDOWS_CERT_SHA1: ${{ steps.signing.outputs.thumbprint }}
-        run: Remove-Item "Cert:\CurrentUser\My\$env:WINDOWS_CERT_SHA1" -DeleteKey -ErrorAction SilentlyContinue
   stage:
     needs:
       - prepare
@@ -568,7 +441,7 @@ jobs:
       - build-macos-x64
       - build-win32-x64
     if: |-
-      ${{ always() && !cancelled() && inputs.run-stage && !inputs.unsigned
+      ${{ always() && !cancelled() && inputs.run-stage
         && needs.prepare.result == 'success'
         && (!inputs.run-linux-x64 || needs.build-linux-x64.result == 'success')
         && (!inputs.run-linux-arm || needs.build-linux-arm.result == 'success')

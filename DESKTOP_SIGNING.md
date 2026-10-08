@@ -37,32 +37,16 @@ gh secret set MACOS_APPLE_PASSWORD --env release
 gh secret set MACOS_APPLE_TEAM_ID --env release
 ```
 
-Run **Build Snake Desktop** with `run-macos` for Apple Silicon and/or `run-macos-intel` for Intel. Leave `unsigned` off.
+Run **Build Snake Desktop** with `run-macos` for Apple Silicon and/or `run-macos-intel` for Intel.
 
 ## Windows
 
-The default `windows-signing: self-signed` builds an MSIX on `windows-latest`. It needs no paid signing certificate or Windows developer account. Each user must explicitly trust your certificate before installation; this does not guarantee the absence of SmartScreen warnings. Microsoft documents this approach for [testing and sideloading](https://learn.microsoft.com/en-us/windows/msix/package/sign-msix-package-guide).
+Register a self-hosted runner with the `windows-signer` label. Install the code-signing certificate and its private key in `Cert:\CurrentUser\My` for the account running the Actions runner. The certificate must be valid and allow code signing.
 
-Generate a persistent signing certificate on macOS or Linux with OpenSSL available:
+Set `WINDOWS_CERT_SHA1` to the certificate's 40-character hexadecimal thumbprint, without spaces:
 
 ```sh
-scripts/create-windows-certificate.sh
-base64 < out/windows-signing/snake.pfx | tr -d '\n' | gh secret set WINDOWS_CERTIFICATE_BASE64 --env release
-gh secret set WINDOWS_CERTIFICATE_PASSWORD --env release
+gh secret set WINDOWS_CERT_SHA1 --env release
 ```
 
-Use the password chosen by the certificate helper at the final prompt. The helper creates an encrypted `snake.pfx` and public `snake.cer` in the ignored `out/windows-signing` directory. Its optional arguments are `[output-directory [subject]]`; the default subject is `/CN=Snake`. Back up the PFX and password securely, and reuse the same certificate for subsequent builds so users keep their existing trust. CI derives the package publisher from the certificate subject.
-
-Run **Build Snake Desktop** with `run-windows-x64` enabled, `unsigned` off, and `windows-signing: self-signed`. Download the `snake-win32-x64-msix` artifact, which contains the MSIX, public `snake.cer`, and `INSTALL.txt`. It contains no private key.
-
-To install, extract the artifact, open **PowerShell as administrator** in that folder, and run this once for a certificate from a publisher you trust:
-
-```powershell
-Import-Certificate -FilePath .\snake.cer -CertStoreLocation Cert:\LocalMachine\TrustedPeople
-```
-
-Then double-click the MSIX as your normal user. This uses the **Trusted People** store. A replacement certificate needs a new trust step.
-
-For an existing signing setup, choose `windows-signing: cert-sha1`, register a self-hosted runner with the `windows-signer` label and its certificate/private key installed, and configure `WINDOWS_CERT_SHA1` with the certificate thumbprint. This mode does not use the PFX secrets.
-
-Selecting `unsigned` bypasses Windows signing and produces a portable ZIP on a hosted runner. Unsigned builds cannot stage updates.
+Run **Build Snake Desktop** with `run-windows-x64` enabled. The workflow derives the MSIX publisher from the installed certificate, signs and verifies the package, and uploads it as `snake-win32-x64-msix`.

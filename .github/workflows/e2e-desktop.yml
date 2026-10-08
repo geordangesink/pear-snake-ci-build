@@ -53,9 +53,6 @@ jobs:
               "snake-linux-arm64-appimage": "ubuntu-24.04-arm",
               "snake-darwin-arm64-app.zip": "macos-latest",
               "snake-darwin-x64-app.zip": "macos-26-intel",
-              "snake-darwin-arm64-unsigned": "macos-latest",
-              "snake-darwin-x64-unsigned": "macos-26-intel",
-              "snake-win32-x64-unsigned": "windows-latest",
               "snake-win32-x64-msix": "windows-latest"
             } as $runners |
             [$names[] | select($runners[.] != null) | {artifact: ., runner: $runners[.]}]

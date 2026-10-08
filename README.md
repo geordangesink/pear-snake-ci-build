@@ -18,9 +18,7 @@ Start builds from this repository's **Actions** tab. Each build resolves `ref` o
 
 Select the platforms to build; all default to off, matching `pear-ci-build`. Outputs are Linux AppImage, Snap, and Flatpak source archives; signed and notarized macOS DMG and app ZIP; and signed Windows MSIX.
 
-Windows defaults to `windows-signing: self-signed` on a hosted runner. Users must trust the included public certificate once before installing. This needs no paid signing certificate or Windows developer account. Select `cert-sha1` to use an existing certificate on a `windows-signer` runner.
-
-Enable `unsigned` for testing without desktop signing credentials. macOS produces an unsigned DMG and app ZIP; Windows produces a portable ZIP on a hosted runner. These artifact names end in `-unsigned`. Linux outputs are unchanged. Unsigned builds cannot stage updates.
+Windows builds require a `windows-signer` runner with the signing certificate and private key installed. Set `WINDOWS_CERT_SHA1` to its certificate thumbprint.
 
 ### Mobile
 
@@ -68,10 +66,9 @@ Staging uses `GITHUB_TOKEN` by default. An optional GitHub App with Contents wri
 | macOS Developer ID signing | `MACOS_CERTIFICATE_BASE64`, `MACOS_P12_PASSWORD`, `MACOS_CODESIGN_IDENTITY` |
 | macOS notarization, preferred | `APPSTORE_API_PRIVATE_KEY`, `APPSTORE_API_KEY_ID`, `APPSTORE_ISSUER_ID` |
 | macOS notarization, fallback | `MACOS_APPLE_ID`, `MACOS_APPLE_PASSWORD`, `MACOS_APPLE_TEAM_ID` |
-| Windows self-signed MSIX | `WINDOWS_CERTIFICATE_BASE64`, `WINDOWS_CERTIFICATE_PASSWORD` |
-| Windows existing signer | `WINDOWS_CERT_SHA1` |
+| Windows MSIX signing | `WINDOWS_CERT_SHA1` |
 
-See [Desktop signing](DESKTOP_SIGNING.md) for certificate export, secret setup, and Windows installation. macOS requires a Developer ID Application certificate and its private key, separate from the mobile distribution certificate. It reuses the App Store Connect team API key when all three API secrets are configured; otherwise it requires all three Apple ID secrets.
+See [Desktop signing](DESKTOP_SIGNING.md) for certificate export, secret setup, and Windows runner configuration. macOS requires a Developer ID Application certificate and its private key, separate from the mobile distribution certificate. It reuses the App Store Connect team API key when all three API secrets are configured; otherwise it requires all three Apple ID secrets.
 
 ### Mobile signing and publishing
 
@@ -97,7 +94,7 @@ Set `SLACK_WEBHOOK_URL` to use optional build notifications.
 
 **CodeQL** scans both repositories weekly or on manual dispatch. Download each app's SARIF report and source metadata from its run. Reports stay here as artifacts; uploading alerts to a source repository's Security tab requires a token with access to that repository.
 
-**E2E Snake Desktop** runs after successful desktop builds on `main`, or manually with a completed desktop build’s `run-id`. It uses available AppImage, macOS app ZIP, and Windows ZIP/MSIX artifacts. Tests exercise the extracted application, including real multiplayer connections; they do not test installer registration or signing.
+**E2E Snake Desktop** runs after successful desktop builds on `main`, or manually with a completed desktop build’s `run-id`. It uses available AppImage, macOS app ZIP, and Windows MSIX artifacts. Tests exercise the extracted application, including real multiplayer connections; they do not test installer registration or signing.
 
 **E2E Snake Mobile** runs manually against a selectable source ref. It builds unsigned iOS Simulator and debug-signed Android emulator apps without release secrets, then tests create, copy topic, leave, and join through Maestro. Both E2E workflows use real networking and upload diagnostics.
 
