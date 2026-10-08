@@ -1,0 +1,117 @@
+name: Stage Pear app
+description: Stage one app and save its own Corestore snapshot
+inputs:
+  primary-key:
+    description: 32-byte Corestore primary key, encoded as hex
+    required: true
+  namespace:
+    description: Drive namespace
+    required: true
+  snapshot-path:
+    description: This app's snapshot file in the CI repository
+    required: true
+  target:
+    description: Relative path to the stage directory
+    required: true
+  upgrade-link:
+    description: Expected public Pear link, checked before staging
+    default: ''
+  dry-run:
+    description: Preview changes without writing to the drive
+    default: 'false'
+  github-token:
+    description: Token for reading and committing the snapshot
+    default: ${{ github.token }}
+  app-slug:
+    description: GitHub App slug for snapshot commit attribution
+    default: ''
+outputs:
+  pear-link:
+    description: Public link of the staged drive
+    value: ${{ steps.stage.outputs.pear-link }}
+  pr-url:
+    description: Snapshot PR when direct push to main was unavailable
+    value: ${{ steps.commit.outputs.pr-url }}
+runs:
+  using: composite
+  steps:
+    - name: Validate staging inputs
+      shell: bash
+      env:
+        PRIMARY_KEY: ${{ inputs.primary-key }}
+        NAMESPACE: ${{ inputs.namespace }}
+        SNAPSHOT_PATH: ${{ inputs.snapshot-path }}
+        TARGET: ${{ inputs.target }}
+        DRY_RUN: ${{ inputs.dry-run }}
+      run: |
+        [[ "$PRIMARY_KEY" =~ ^[a-fA-F0-9]{64}$ ]] || { echo '::error::Primary key must be 64 hexadecimal characters'; exit 1; }
+        [[ "$NAMESPACE" =~ ^[a-zA-Z0-9._/-]+$ ]] || { echo '::error::Invalid staging namespace'; exit 1; }
+        [[ "$SNAPSHOT_PATH" =~ ^ci/[a-zA-Z0-9._/-]+\.json$ && "$SNAPSHOT_PATH" != *..* ]] || { echo '::error::Snapshot must be a JSON file under ci/'; exit 1; }
+        [[ "$TARGET" =~ ^[a-zA-Z0-9_./-]+$ && "$TARGET" != /* && "$TARGET" != *..* ]] || { echo '::error::Invalid relative staging target'; exit 1; }
+        [[ "$DRY_RUN" == true || "$DRY_RUN" == false ]] || { echo '::error::Invalid dry-run value'; exit 1; }
+
+    - name: Install pear-ci
+      shell: bash
+      run: npm install --prefix "$RUNNER_TEMP/pear-stage-tools" --ignore-scripts --no-package-lock --no-audit --no-fund pear-ci@0.1.1
+
+    - name: Fetch app snapshot from main
+      shell: bash
+      env:
+        GH_TOKEN: ${{ inputs.github-token }}
+        SNAPSHOT_PATH: ${{ inputs.snapshot-path }}
+      run: |
+        mkdir -p "$(dirname "$SNAPSHOT_PATH")"
+        gh api --header 'Accept: application/vnd.github.raw+json' \
+          "/repos/${GITHUB_REPOSITORY}/contents/${SNAPSHOT_PATH}?ref=main" > "$SNAPSHOT_PATH"
+
+    - name: Stage app
+      id: stage
+      shell: bash
+      env:
+        NODE_PATH: ${{ runner.temp }}/pear-stage-tools/node_modules
+        PRIMARY_KEY: ${{ inputs.primary-key }}
+        NAMESPACE: ${{ inputs.namespace }}
+        SNAPSHOT_PATH: ${{ inputs.snapshot-path }}
+        TARGET: ${{ inputs.target }}
+        EXPECTED_UPGRADE_LINK: ${{ inputs.upgrade-link }}
+        DRY_RUN: ${{ inputs.dry-run }}
+      run: node "$GITHUB_ACTION_PATH/../../../scripts/stage.js"
+
+    - name: Commit app snapshot to main
+      id: commit
+      if: inputs.dry-run != 'true'
+      shell: bash
+      env:
+        GH_TOKEN: ${{ inputs.github-token }}
+        APP_SLUG: ${{ inputs.app-slug }}
+        SNAPSHOT_PATH: ${{ inputs.snapshot-path }}
+      run: |
+        if [ -n "$APP_SLUG" ]; then
+          USER_ID=$(gh api "/users/${APP_SLUG}[bot]" -q .id)
+          git config user.name "${APP_SLUG}[bot]"
+          git config user.email "${USER_ID}+${APP_SLUG}[bot]@users.noreply.github.com"
+        else
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+        fi
+
+        cp "$SNAPSHOT_PATH" "$RUNNER_TEMP/pear-stage-snapshot.json"
+        git fetch origin main
+        git checkout --force -B main FETCH_HEAD
+        mkdir -p "$(dirname "$SNAPSHOT_PATH")"
+        cp "$RUNNER_TEMP/pear-stage-snapshot.json" "$SNAPSHOT_PATH"
+        git add "$SNAPSHOT_PATH"
+        git diff --cached --quiet && echo 'Snapshot unchanged, skipping' && exit 0
+        git commit -m "Update ${SNAPSHOT_PATH} [run ${GITHUB_RUN_ID}]"
+        if ! git push origin HEAD:main; then
+          BRANCH="pear-ci/$(basename "$SNAPSHOT_PATH" .json)-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          git checkout -b "$BRANCH"
+          git push origin "$BRANCH"
+          printf 'Snapshot from [run %s](%s/%s/actions/runs/%s). Merge before staging this app again.\n' \
+            "$GITHUB_RUN_ID" "$GITHUB_SERVER_URL" "$GITHUB_REPOSITORY" "$GITHUB_RUN_ID" > "$RUNNER_TEMP/pear-stage-pr.md"
+          PR_URL=$(gh pr create --base main --head "$BRANCH" \
+            --title "Update ${SNAPSHOT_PATH} [run ${GITHUB_RUN_ID}]" \
+            --body-file "$RUNNER_TEMP/pear-stage-pr.md")
+          echo "pr-url=$PR_URL" >> "$GITHUB_OUTPUT"
+          echo "::warning::Merge the snapshot PR before staging this app again: $PR_URL"
+        fi

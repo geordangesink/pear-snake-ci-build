@@ -1,0 +1,544 @@
+name: Build Snake Desktop
+on:
+  workflow_dispatch:
+    inputs:
+      ref:
+        type: string
+        default: main
+      channel:
+        type: choice
+        default: dev
+        options:
+          - dev
+          - stage
+          - production
+      upgrade-key:
+        description: Value for package.json upgrade field
+        type: string
+        default: ''
+      run-linux-arm:
+        type: boolean
+        default: false
+      run-linux-x64:
+        type: boolean
+        default: false
+      run-macos:
+        type: boolean
+        default: false
+      run-macos-intel:
+        type: boolean
+        default: false
+      run-windows-x64:
+        type: boolean
+        default: false
+      run-stage:
+        type: boolean
+        default: false
+      stage-dry-run:
+        type: boolean
+        default: false
+      notify:
+        type: boolean
+        default: false
+permissions:
+  contents: read
+  packages: read
+env:
+  CHANNEL: ${{ inputs.channel }}
+jobs:
+  prepare:
+    if: ${{ inputs.run-linux-x64 || inputs.run-linux-arm || inputs.run-macos || inputs.run-macos-intel || inputs.run-windows-x64 }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      sha: ${{ steps.source.outputs.sha }}
+      upgrade-link: ${{ steps.source.outputs.upgrade-link }}
+    steps:
+      - name: Checkout snake
+        uses: actions/checkout@v4
+        with:
+          repository: geordangesink/snake
+          ref: ${{ inputs.ref }}
+          persist-credentials: false
+      - name: Resolve source commit
+        id: source
+        run: |
+          echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+          node <<'NODE'
+          const fs = require('node:fs')
+          const upgrade = process.env.UPGRADE_KEY || require('./package.json').upgrade
+          if (typeof upgrade !== 'string' || /[\r\n]/.test(upgrade)) throw new Error('Invalid upgrade link')
+          fs.appendFileSync(process.env.GITHUB_OUTPUT, 'upgrade-link=' + upgrade + '\n')
+          NODE
+        env:
+          UPGRADE_KEY: ${{ inputs.upgrade-key }}
+  build-linux-x64:
+    needs: prepare
+    if: ${{ !cancelled() && !failure() && inputs.run-linux-x64 }}
+    runs-on: ubuntu-latest
+    environment: release
+    timeout-minutes: 30
+    steps:
+      - name: Checkout snake
+        uses: actions/checkout@v4
+        with:
+          repository: geordangesink/snake
+          ref: ${{ needs.prepare.outputs.sha }}
+          token: ${{ github.token }}
+          persist-credentials: false
+      - name: Install dependencies
+        uses: holepunchto/actions/node-base-extended@v1
+        with:
+          allow-git: all
+          clean-install: true
+          version: 24
+          node-auth-token: ${{ github.token }}
+      - name: Setup bare
+        uses: holepunchto/actions/setup-bare@v1
+      - name: Checkout build tools
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          path: .snake-ci
+          sparse-checkout: scripts/snapcraft.py
+          sparse-checkout-cone-mode: false
+          persist-credentials: false
+      - name: Configure Snapcraft native downloads
+        run: |
+          sudo install -m 755 .snake-ci/scripts/snapcraft.py /usr/local/bin/snapcraft
+          rm -rf .snake-ci
+      - name: Build linux x64
+        uses: holepunchto/actions/make-pear-app@v1
+        with:
+          channel: ${{ env.CHANNEL }}
+          upgrade_key: ${{ inputs.upgrade-key }}
+          linux_appimage: '*.AppImage'
+          linux_appimage_artifact_name: snake-linux-x64-appimage
+          linux_snap: '*.snap'
+          linux_snap_artifact_name: snake-linux-x64-snap
+          linux_flatpak: '*_flatpak.tar.gz'
+          linux_flatpak_artifact_name: snake-linux-x64-flatpak
+  build-linux-arm:
+    needs: prepare
+    if: ${{ !cancelled() && !failure() && inputs.run-linux-arm }}
+    runs-on: ubuntu-24.04-arm
+    environment: release
+    timeout-minutes: 30
+    steps:
+      - name: Checkout snake
+        uses: actions/checkout@v4
+        with:
+          repository: geordangesink/snake
+          ref: ${{ needs.prepare.outputs.sha }}
+          token: ${{ github.token }}
+          persist-credentials: false
+      - name: Install dependencies
+        uses: holepunchto/actions/node-base-extended@v1
+        with:
+          allow-git: all
+          clean-install: true
+          version: 24
+          node-auth-token: ${{ github.token }}
+      - name: Setup bare
+        uses: holepunchto/actions/setup-bare@v1
+      - name: Checkout build tools
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          path: .snake-ci
+          sparse-checkout: scripts/snapcraft.py
+          sparse-checkout-cone-mode: false
+          persist-credentials: false
+      - name: Configure Snapcraft native downloads
+        run: |
+          sudo install -m 755 .snake-ci/scripts/snapcraft.py /usr/local/bin/snapcraft
+          rm -rf .snake-ci
+      - name: Build linux arm64
+        uses: holepunchto/actions/make-pear-app@v1
+        with:
+          channel: ${{ env.CHANNEL }}
+          upgrade_key: ${{ inputs.upgrade-key }}
+          linux_appimage: '*.AppImage'
+          linux_appimage_artifact_name: snake-linux-arm64-appimage
+          linux_snap: '*.snap'
+          linux_snap_artifact_name: snake-linux-arm64-snap
+          linux_flatpak: '*_flatpak.tar.gz'
+          linux_flatpak_artifact_name: snake-linux-arm64-flatpak
+  build-macos:
+    needs: prepare
+    if: ${{ !cancelled() && !failure() && inputs.run-macos }}
+    runs-on: macos-latest
+    environment: release
+    timeout-minutes: 60
+    steps:
+      - name: Validate macOS signing secrets
+        id: signing
+        shell: bash
+        env:
+          MACOS_CERTIFICATE_BASE64: ${{ secrets.MACOS_CERTIFICATE_BASE64 }}
+          MACOS_P12_PASSWORD: ${{ secrets.MACOS_P12_PASSWORD }}
+          MACOS_CODESIGN_IDENTITY: ${{ secrets.MACOS_CODESIGN_IDENTITY }}
+          MACOS_APPLE_ID: ${{ secrets.MACOS_APPLE_ID }}
+          MACOS_APPLE_PASSWORD: ${{ secrets.MACOS_APPLE_PASSWORD }}
+          MACOS_APPLE_TEAM_ID: ${{ secrets.MACOS_APPLE_TEAM_ID }}
+          APPSTORE_API_KEY_ID: ${{ secrets.APPSTORE_API_KEY_ID }}
+          APPSTORE_API_PRIVATE_KEY: ${{ secrets.APPSTORE_API_PRIVATE_KEY }}
+          APPSTORE_ISSUER_ID: ${{ secrets.APPSTORE_ISSUER_ID }}
+        run: |
+          missing=0
+          required=(MACOS_CERTIFICATE_BASE64 MACOS_P12_PASSWORD MACOS_CODESIGN_IDENTITY)
+          if [[ -n "$APPSTORE_API_KEY_ID" && -n "$APPSTORE_API_PRIVATE_KEY" && -n "$APPSTORE_ISSUER_ID" ]]; then
+            echo 'notarization-method=appstore_connect' >> "$GITHUB_OUTPUT"
+          else
+            echo 'notarization-method=apple_id_password' >> "$GITHUB_OUTPUT"
+            required+=(MACOS_APPLE_ID MACOS_APPLE_PASSWORD MACOS_APPLE_TEAM_ID)
+          fi
+          for name in "${required[@]}"; do
+            if [[ -z "${!name}" ]]; then
+              echo "::error::Missing Actions secret $name. Configure desktop signing."
+              missing=1
+            fi
+          done
+          exit "$missing"
+      - name: Checkout snake
+        uses: actions/checkout@v4
+        with:
+          repository: geordangesink/snake
+          ref: ${{ needs.prepare.outputs.sha }}
+          token: ${{ github.token }}
+          persist-credentials: false
+      - name: Checkout macOS build tools
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          path: .snake-ci
+          sparse-checkout: scripts/sign-macos-artifacts.sh
+          sparse-checkout-cone-mode: false
+          persist-credentials: false
+      - name: Prepare macOS build tools
+        run: |
+          cp .snake-ci/scripts/sign-macos-artifacts.sh "$RUNNER_TEMP/sign-macos-artifacts.sh"
+          rm -rf .snake-ci
+      - name: Install dependencies
+        uses: holepunchto/actions/node-base-extended@v1
+        with:
+          allow-git: all
+          clean-install: true
+          version: 24
+          node-auth-token: ${{ github.token }}
+      - name: Build native DMG dependencies
+        shell: bash
+        run: |
+          sfw="$(command -v sfw)"
+          "$sfw" npm rebuild macos-alias fs-xattr --ignore-scripts=false --foreground-scripts
+      - name: Setup bare
+        uses: holepunchto/actions/setup-bare@v1
+      - name: Build macos arm64
+        uses: holepunchto/actions/make-pear-app@v1
+        with:
+          channel: ${{ env.CHANNEL }}
+          upgrade_key: ${{ inputs.upgrade-key }}
+          macos_certificate_base64: ${{ secrets.MACOS_CERTIFICATE_BASE64 }}
+          macos_p12_password: ${{ secrets.MACOS_P12_PASSWORD }}
+          macos_codesign_identity: ${{ secrets.MACOS_CODESIGN_IDENTITY }}
+          macos_notarization_method: ${{ steps.signing.outputs.notarization-method }}
+          macos_apple_id: ${{ secrets.MACOS_APPLE_ID }}
+          macos_apple_password: ${{ secrets.MACOS_APPLE_PASSWORD }}
+          macos_apple_team_id: ${{ secrets.MACOS_APPLE_TEAM_ID }}
+          macos_api_key_base64: ${{ secrets.APPSTORE_API_PRIVATE_KEY }}
+          macos_api_key_id: ${{ secrets.APPSTORE_API_KEY_ID }}
+          macos_api_issuer: ${{ secrets.APPSTORE_ISSUER_ID }}
+      - name: Sign and verify macOS artifacts
+        env:
+          MACOS_CODESIGN_IDENTITY: ${{ secrets.MACOS_CODESIGN_IDENTITY }}
+        run: bash "$RUNNER_TEMP/sign-macos-artifacts.sh" arm64
+      - name: Upload signed macOS DMG
+        uses: actions/upload-artifact@v4
+        with:
+          name: snake-darwin-arm64-dmg
+          path: out/make/**/*.dmg
+          if-no-files-found: error
+      - name: Upload signed macOS app
+        uses: actions/upload-artifact@v4
+        with:
+          name: snake-darwin-arm64-app.zip
+          path: ${{ runner.temp }}/snake-darwin-arm64-app.zip
+          if-no-files-found: error
+  build-macos-x64:
+    needs: prepare
+    if: ${{ !cancelled() && !failure() && inputs.run-macos-intel }}
+    runs-on: macos-26-intel
+    environment: release
+    timeout-minutes: 60
+    steps:
+      - name: Validate macOS signing secrets
+        id: signing
+        shell: bash
+        env:
+          MACOS_CERTIFICATE_BASE64: ${{ secrets.MACOS_CERTIFICATE_BASE64 }}
+          MACOS_P12_PASSWORD: ${{ secrets.MACOS_P12_PASSWORD }}
+          MACOS_CODESIGN_IDENTITY: ${{ secrets.MACOS_CODESIGN_IDENTITY }}
+          MACOS_APPLE_ID: ${{ secrets.MACOS_APPLE_ID }}
+          MACOS_APPLE_PASSWORD: ${{ secrets.MACOS_APPLE_PASSWORD }}
+          MACOS_APPLE_TEAM_ID: ${{ secrets.MACOS_APPLE_TEAM_ID }}
+          APPSTORE_API_KEY_ID: ${{ secrets.APPSTORE_API_KEY_ID }}
+          APPSTORE_API_PRIVATE_KEY: ${{ secrets.APPSTORE_API_PRIVATE_KEY }}
+          APPSTORE_ISSUER_ID: ${{ secrets.APPSTORE_ISSUER_ID }}
+        run: |
+          missing=0
+          required=(MACOS_CERTIFICATE_BASE64 MACOS_P12_PASSWORD MACOS_CODESIGN_IDENTITY)
+          if [[ -n "$APPSTORE_API_KEY_ID" && -n "$APPSTORE_API_PRIVATE_KEY" && -n "$APPSTORE_ISSUER_ID" ]]; then
+            echo 'notarization-method=appstore_connect' >> "$GITHUB_OUTPUT"
+          else
+            echo 'notarization-method=apple_id_password' >> "$GITHUB_OUTPUT"
+            required+=(MACOS_APPLE_ID MACOS_APPLE_PASSWORD MACOS_APPLE_TEAM_ID)
+          fi
+          for name in "${required[@]}"; do
+            if [[ -z "${!name}" ]]; then
+              echo "::error::Missing Actions secret $name. Configure desktop signing."
+              missing=1
+            fi
+          done
+          exit "$missing"
+      - name: Checkout snake
+        uses: actions/checkout@v4
+        with:
+          repository: geordangesink/snake
+          ref: ${{ needs.prepare.outputs.sha }}
+          token: ${{ github.token }}
+          persist-credentials: false
+      - name: Checkout macOS build tools
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          path: .snake-ci
+          sparse-checkout: scripts/sign-macos-artifacts.sh
+          sparse-checkout-cone-mode: false
+          persist-credentials: false
+      - name: Prepare macOS build tools
+        run: |
+          cp .snake-ci/scripts/sign-macos-artifacts.sh "$RUNNER_TEMP/sign-macos-artifacts.sh"
+          rm -rf .snake-ci
+      - name: Install dependencies
+        uses: holepunchto/actions/node-base-extended@v1
+        with:
+          allow-git: all
+          clean-install: true
+          version: 24
+          node-auth-token: ${{ github.token }}
+      - name: Build native DMG dependencies
+        shell: bash
+        run: |
+          sfw="$(command -v sfw)"
+          "$sfw" npm rebuild macos-alias fs-xattr --ignore-scripts=false --foreground-scripts
+      - name: Setup bare
+        uses: holepunchto/actions/setup-bare@v1
+      - name: Build macos x64
+        uses: holepunchto/actions/make-pear-app@v1
+        with:
+          channel: ${{ env.CHANNEL }}
+          upgrade_key: ${{ inputs.upgrade-key }}
+          macos_certificate_base64: ${{ secrets.MACOS_CERTIFICATE_BASE64 }}
+          macos_p12_password: ${{ secrets.MACOS_P12_PASSWORD }}
+          macos_codesign_identity: ${{ secrets.MACOS_CODESIGN_IDENTITY }}
+          macos_notarization_method: ${{ steps.signing.outputs.notarization-method }}
+          macos_apple_id: ${{ secrets.MACOS_APPLE_ID }}
+          macos_apple_password: ${{ secrets.MACOS_APPLE_PASSWORD }}
+          macos_apple_team_id: ${{ secrets.MACOS_APPLE_TEAM_ID }}
+          macos_api_key_base64: ${{ secrets.APPSTORE_API_PRIVATE_KEY }}
+          macos_api_key_id: ${{ secrets.APPSTORE_API_KEY_ID }}
+          macos_api_issuer: ${{ secrets.APPSTORE_ISSUER_ID }}
+      - name: Sign and verify macOS artifacts
+        env:
+          MACOS_CODESIGN_IDENTITY: ${{ secrets.MACOS_CODESIGN_IDENTITY }}
+        run: bash "$RUNNER_TEMP/sign-macos-artifacts.sh" x64
+      - name: Upload signed macOS DMG
+        uses: actions/upload-artifact@v4
+        with:
+          name: snake-darwin-x64-dmg
+          path: out/make/**/*.dmg
+          if-no-files-found: error
+      - name: Upload signed macOS app
+        uses: actions/upload-artifact@v4
+        with:
+          name: snake-darwin-x64-app.zip
+          path: ${{ runner.temp }}/snake-darwin-x64-app.zip
+          if-no-files-found: error
+  build-win32-x64:
+    needs: prepare
+    if: ${{ !cancelled() && !failure() && inputs.run-windows-x64 }}
+    runs-on: windows-signer
+    environment: release
+    timeout-minutes: 30
+    steps:
+      - name: Validate Windows signing secrets
+        shell: pwsh
+        env:
+          WINDOWS_CERT_SHA1: ${{ secrets.WINDOWS_CERT_SHA1 }}
+        run: |
+          if (-not $env:WINDOWS_CERT_SHA1) {
+            throw 'Missing Actions secret WINDOWS_CERT_SHA1. See DESKTOP_SIGNING.md.'
+          }
+      - name: Checkout snake
+        uses: actions/checkout@v4
+        with:
+          repository: geordangesink/snake
+          ref: ${{ needs.prepare.outputs.sha }}
+          token: ${{ github.token }}
+          persist-credentials: false
+      - name: Checkout Windows signing tools
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          path: .snake-ci
+          sparse-checkout: |
+            scripts/prepare-windows-signing.ps1
+            scripts/verify-windows-signing.ps1
+          sparse-checkout-cone-mode: false
+          persist-credentials: false
+      - name: Prepare Windows signing
+        id: signing
+        shell: pwsh
+        env:
+          WINDOWS_CERT_SHA1: ${{ secrets.WINDOWS_CERT_SHA1 }}
+        run: |
+          Copy-Item .snake-ci/scripts/*-windows-signing.ps1 $env:RUNNER_TEMP
+          Remove-Item .snake-ci -Recurse -Force
+          & "$env:RUNNER_TEMP/prepare-windows-signing.ps1"
+      - name: Install dependencies
+        uses: holepunchto/actions/node-base-extended@v1
+        with:
+          allow-git: all
+          clean-install: true
+          version: 24
+          node-auth-token: ${{ github.token }}
+      - name: Setup bare
+        uses: holepunchto/actions/setup-bare@v1
+      - name: Build windows x64
+        uses: holepunchto/actions/make-pear-app@v1
+        with:
+          channel: ${{ env.CHANNEL }}
+          upgrade_key: ${{ inputs.upgrade-key }}
+          windows_signing_method: cert_sha1
+          windows_cert_sha1: ${{ steps.signing.outputs.thumbprint }}
+      - name: Verify Windows package signature
+        shell: pwsh
+        env:
+          WINDOWS_CERT_SHA1: ${{ steps.signing.outputs.thumbprint }}
+        run: '& "$env:RUNNER_TEMP/verify-windows-signing.ps1"'
+      - name: Upload signed Windows app
+        uses: actions/upload-artifact@v4
+        with:
+          name: snake-win32-x64-msix
+          path: out/make/**/*.msix
+          if-no-files-found: error
+  stage:
+    needs:
+      - prepare
+      - build-linux-x64
+      - build-linux-arm
+      - build-macos
+      - build-macos-x64
+      - build-win32-x64
+    if: |-
+      ${{ always() && !cancelled() && inputs.run-stage
+        && needs.prepare.result == 'success'
+        && (!inputs.run-linux-x64 || needs.build-linux-x64.result == 'success')
+        && (!inputs.run-linux-arm || needs.build-linux-arm.result == 'success')
+        && (!inputs.run-macos || needs.build-macos.result == 'success')
+        && (!inputs.run-macos-intel || needs.build-macos-x64.result == 'success')
+        && (!inputs.run-windows-x64 || needs.build-win32-x64.result == 'success') }}
+    permissions:
+      contents: write
+      pull-requests: write
+      actions: read
+    runs-on: macos-latest
+    environment: release
+    timeout-minutes: 20
+    concurrency:
+      group: pear-ci-snapshot
+      cancel-in-progress: false
+    outputs:
+      pr-url: ${{ steps.pear-ci.outputs.pr-url }}
+      pear-link: ${{ steps.pear-ci.outputs.pear-link }}
+    steps:
+      - name: Create GitHub App token
+        id: build-app-token
+        if: ${{ vars.BUILD_APP_CLIENT_ID != '' || vars.BUILD_APP_ID != '' }}
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1
+        with:
+          client-id: ${{ vars.BUILD_APP_CLIENT_ID || vars.BUILD_APP_ID }}
+          private-key: ${{ secrets.BUILD_APP_PRIVATE_KEY }}
+          permission-contents: write
+          permission-pull-requests: write
+      - name: Checkout CI repository
+        uses: actions/checkout@v4
+        with:
+          token: ${{ steps.build-app-token.outputs.token || github.token }}
+      - name: Checkout snake source
+        uses: actions/checkout@v4
+        with:
+          repository: geordangesink/snake
+          ref: ${{ needs.prepare.outputs.sha }}
+          path: snake-source
+          persist-credentials: false
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - name: Download build artifacts
+        uses: actions/download-artifact@v4
+        with:
+          pattern: snake-*
+          path: out/artifacts
+      - name: Build stage artifact
+        env:
+          UPGRADE_KEY: ${{ inputs.upgrade-key }}
+        run: |
+          node scripts/build-stage-artifact.js
+          tar -czf "$RUNNER_TEMP/stage.tar.gz" -C out/snake-stage .
+      - name: Upload stage artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: snake-stage
+          path: ${{ runner.temp }}/stage.tar.gz
+          if-no-files-found: error
+      - name: Stage with pear-ci
+        id: pear-ci
+        uses: ./.github/actions/stage
+        with:
+          namespace: ${{ vars.PEAR_DESKTOP_NAMESPACE || format('snake-{0}-v1', inputs.channel) }}
+          primary-key: ${{ secrets.PEAR_DESKTOP_PRIMARY_KEY }}
+          snapshot-path: ci/snake-snapshot.json
+          target: ./out/snake-stage
+          upgrade-link: ${{ needs.prepare.outputs.upgrade-link }}
+          dry-run: ${{ inputs.stage-dry-run }}
+          github-token: ${{ steps.build-app-token.outputs.token || github.token }}
+          app-slug: ${{ steps.build-app-token.outputs.app-slug }}
+  notify:
+    needs:
+      - prepare
+      - build-linux-x64
+      - build-linux-arm
+      - build-macos
+      - build-macos-x64
+      - build-win32-x64
+      - stage
+    if: ${{ always() && !cancelled() && inputs.notify }}
+    runs-on: ubuntu-latest
+    environment: release
+    timeout-minutes: 5
+    steps:
+      - name: Checkout CI repository
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - name: Notify Slack
+        uses: ./.github/actions/notify
+        with:
+          title: Snake desktop build
+          ref: ${{ inputs.ref }}
+          channel: ${{ inputs.channel }}
+          results: ${{ toJSON(needs) }}
+          webhook: ${{ secrets.SLACK_WEBHOOK_URL }}

@@ -1,0 +1,14 @@
+{
+  "name": "snake-desktop-e2e",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "test": "node --test desktop.test.js"
+  },
+  "dependencies": {
+    "playwright": "1.63.0"
+  },
+  "engines": {
+    "node": ">=24"
+  }
+}
