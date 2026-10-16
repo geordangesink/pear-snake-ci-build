@@ -1,73 +1,59 @@
 # Releasing Snake Mobile
 
-GitHub Actions in [geordangesink/pear-snake-ci-build](https://github.com/geordangesink/pear-snake-ci-build) builds and signs the native apps, following [Keet's build flow](https://github.com/holepunchto/keet-mobile/blob/main/.github/workflows/build.yml). Workflows, artifacts, signing secrets, and store credentials live in that central repository. Expo Prebuild generates the native projects; Xcode and Gradle compile them on the runners. EAS is no longer required for builds or publishing.
+Run **Build Snake Mobile** in [pear-snake-ci-build Actions](https://github.com/holepunchto/pear-snake-ci-build/actions). Source configuration paths below are relative to `snake-mobile`; credentials belong in this CI repository's `release` environment or repository settings.
 
-App configuration paths in this guide are relative to the `snake-mobile` source repository.
+## Build and publish
 
-## Flow
+Select a source `ref` (default `main`) and `build_ios` / `build_android`. Both platforms use the same resolved commit.
 
-- **Build:** Open [pear-snake-ci-build Actions](https://github.com/geordangesink/pear-snake-ci-build/actions) → **Build Snake Mobile** → Run workflow. Set `ref` to the desired snake-mobile branch, tag, or commit; it defaults to `main`. Keep `mode` set to `native`, choose `production` or `preview`, and select `build_ios` / `build_android`. Both platforms build the same resolved source commit. Runs are manual; pushing a tag does not start a build.
-- **Publish after building:** Enable `publish` to submit successful production builds' exact artifacts to TestFlight and Google Play internal testing. It defaults to off. Preview builds are never submitted.
-- **Publish an existing build:** In the central repository, select **Build Snake Mobile** with `mode: publish`. Set `build_run_id` to the numeric GitHub Actions run ID from a central build's URL (`actions/runs/<id>`), then select `build_ios` / `build_android`. It downloads the production artifacts from that run; there is no latest-build fallback. Artifacts must still be available.
-- **Build Pear updates:** In the central repository, select **Build Snake Mobile** with `mode: updates`. Set the source `ref` (default `main`) and `channel`, then optionally enable `run-stage` to stage the update bundle. Native builds can also enable `run-stage` to stage updates from the same source commit after all selected platforms succeed. See the [central staging setup](README.md#pear-staging) for staging credentials, namespaces, and upgrade links.
+| Mode               | Behavior                                                                                                                                                         |
+| ------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `native` (default) | Build selected platforms for distribution. Enable `publish` to submit successful artifacts, or `run-stage` to stage updates after every selected build succeeds. |
+| `updates`          | Bundle Pear updates. Enable `run-stage` to stage them; see [staging setup](README.md#pear-staging).                                                              |
+| `publish`          | Submit signed native artifacts. Set `build_run_id` to the numeric ID from the build's `actions/runs/<id>` URL and select its platforms.                          |
 
-| Platform | Runner and tools                             | Production artifact                                             | Preview artifact                                                                                   |
-| -------- | -------------------------------------------- | --------------------------------------------------------------- | -------------------------------------------------------------------------------------------------- |
-| iOS      | `macos-26`, Prebuild, CocoaPods, Xcode       | `mobile-ios-production`: App Store signed `Snake.ipa`           | `mobile-ios-preview`: ad hoc signed `Snake.ipa` for devices registered in its provisioning profile |
-| Android  | `ubuntu-24.04`, Prebuild, Gradle; ARM64 only | `mobile-android-production`: signed `Snake.aab` and `Snake.apk` | `mobile-android-preview`: signed `Snake.apk`                                                       |
+Runs are manual. Publishing uses the selected run's exact artifacts and build numbers; it does not rebuild or renumber them. Artifacts must still be available.
 
-Each native artifact includes `build-metadata.json` with the source repository, requested ref, and resolved commit, and is retained for 14 days in pear-snake-ci-build. TestFlight uploads use `altool` with an App Store Connect API key. Google Play uploads use the service account and target the internal testing track.
+| Platform | Tools                                  | Artifacts                          |
+| -------- | -------------------------------------- | ---------------------------------- |
+| iOS      | Xcode 26.2, CocoaPods, `macos-26`      | App Store signed `Snake.ipa`       |
+| Android  | Java 17, Gradle, `ubuntu-24.04`; ARM64 | Signed `Snake.aab` and `Snake.apk` |
+
+Artifacts are named `mobile-ios` and `mobile-android` and retained for 14 days. Each includes source/ref/commit metadata. Publishing uploads iOS builds to App Store Connect for TestFlight and Android builds to Google Play's internal testing track. Test iOS builds through TestFlight before releasing them publicly; the workflow does not release them to the public App Store.
 
 ## Versions
 
-The store version comes from `package.json` through `app.config.js`. Both platforms use the central **Build Snake Mobile** workflow's `github.run_number + BUILD_NUMBER_OFFSET` as their build number / Android version code. `BUILD_NUMBER_OFFSET` defaults to `0`; set it in pear-snake-ci-build before migrating so the next number exceeds every previously uploaded store build, including builds from EAS or snake-mobile Actions. The optional `build_number` workflow input overrides this calculation.
+`package.json` supplies the store version through `app.config.js`. Use `major.minor.patch`, with each component from `0` to `999` and no prerelease suffix.
 
-Rerunning a workflow keeps its run number. To upload a rebuilt store version, start a new run or start a run with an explicit larger `build_number`. After using an override, adjust the offset if necessary so future automatic numbers remain higher. The build number is separate from the GitHub run ID used to select artifacts for publishing.
+Build numbers are automatic: `github.run_number * 100 + github.run_attempt`. The counter continues across app versions and retries receive a new number. Both platforms use the same number; Android uses it as its version code. Attempts must be `1–99` and the result cannot exceed `2100000000`; invalid values fail the build instead of wrapping.
 
-## Secrets
+Metadata also includes a fixed-width `buildLabel`: `MMM.mmm.ppp-RRRRRRRR.AA`. Version `1.2.3`, run `42`, attempt `2` produces `001.002.003-00000042.02` and store build number `4202`.
 
-Set these Actions secrets in the `release` environment of **geordangesink/pear-snake-ci-build**, or at repository/organization scope available to that repository, for the selected platforms and profiles.
+Publish a number higher than the previous store upload. Retrying an older run can produce a lower number than a newer run; start a fresh run against the intended ref for the next release. GitHub run IDs select artifacts and are separate from build numbers.
 
-Source repositories are expected to be public, so builds use the automatic `GITHUB_TOKEN` for checkout. GitHub App credentials are optional and only used for Pear staging snapshot writes.
+## Credentials
 
-| Build secret                            | Value                                                                              |
-| --------------------------------------- | ---------------------------------------------------------------------------------- |
-| `ANDROID_KEYSTORE_BASE64`               | Base64-encoded Android signing keystore / Play upload keystore                     |
-| `ANDROID_KEYSTORE_PASSWORD`             | Keystore password                                                                  |
-| `ANDROID_KEY_ALIAS`                     | Signing key alias                                                                  |
-| `ANDROID_KEY_PASSWORD`                  | Signing key password                                                               |
-| `BUILD_CERTIFICATE_BASE64`              | Base64-encoded Apple distribution certificate and private key exported as `.p12`   |
-| `P12_PASSWORD`                          | Password for that `.p12`                                                           |
-| `APPLE_TEAM_ID`                         | Apple Developer Team ID                                                            |
-| `IOS_PROVISIONING_PROFILE_BASE64`       | Base64-encoded App Store provisioning profile for production                       |
-| `IOS_ADHOC_PROVISIONING_PROFILE_BASE64` | Base64-encoded ad hoc provisioning profile for preview, including the test devices |
+| Secret                            | Value                                                                         |
+| --------------------------------- | ----------------------------------------------------------------------------- |
+| `IOS_CERTIFICATE_BASE64`          | Base64 Apple distribution certificate **and private key**, exported as `.p12` |
+| `IOS_P12_PASSWORD`                | Export password                                                               |
+| `APPLE_TEAM_ID`                   | Apple Developer team ID                                                       |
+| `IOS_PROVISIONING_PROFILE_BASE64` | Base64 App Store provisioning profile                                         |
+| `ANDROID_KEYSTORE_BASE64`         | Base64 Android signing / Play upload keystore                                 |
+| `ANDROID_KEYSTORE_PASSWORD`       | Keystore password                                                             |
+| `ANDROID_KEY_ALIAS`               | Signing key alias                                                             |
+| `ANDROID_KEY_PASSWORD`            | Signing key password                                                          |
+| `APPLE_API_KEY_ID`                | App Store Connect API key ID                                                  |
+| `APPLE_API_ISSUER_ID`             | App Store Connect issuer ID                                                   |
+| `APPLE_API_PRIVATE_KEY_BASE64`    | Base64 `.p8` private key                                                      |
+| `GOOGLE_SERVICE_ACCOUNT_JSON`     | Raw service account JSON with Play Console release permissions                |
 
-| Publish secret                | Value                                                                          |
-| ----------------------------- | ------------------------------------------------------------------------------ |
-| `APPSTORE_API_KEY_ID`         | App Store Connect API key ID                                                   |
-| `APPSTORE_ISSUER_ID`          | App Store Connect API issuer ID                                                |
-| `APPSTORE_API_PRIVATE_KEY`    | Base64-encoded `.p8` private key for that API key                              |
-| `GOOGLE_SERVICE_ACCOUNT_JSON` | Full, raw JSON key for a service account with Play Console release permissions |
+Only configure credentials for the platforms you use. Create the Android signing / upload key once and retain it for subsequent releases. The Apple provisioning profile must match the bundle identifier, team, and signing certificate. See [GitHub's Apple signing guide](https://docs.github.com/en/actions/how-tos/deploy/deploy-to-third-party-platforms/sign-xcode-applications) for certificate export and encoding.
 
-`EXPO_TOKEN`, `EAS_PROJECT_ID`, `APPLE_ID`, `APPLE_ASC_APP_ID`, and `EXPO_APPLE_APP_SPECIFIC_PASSWORD` are no longer used by these workflows.
+## Store setup
 
-## Variables
+1. Set registered app identifiers in `app.json`: `expo.ios.bundleIdentifier` and `expo.android.package`. Native builds reject `com.anonymous.*` placeholders.
+2. Create App Store Connect and Play Console app records. Give the Apple API key upload permission. Enable the Google Play Android Developer API and invite the service account in Play Console with release permissions; complete any required first upload there.
+3. Set `expo.extra.iosAppStoreId` to the listing's numeric Apple ID. When an OTA update requires a newer native build (`pear.json` → `updates.minver`), this enables the iOS store button. Android derives its listing from the package name.
 
-Set these optional app identity and numbering overrides in pear-snake-ci-build's `release` environment or repository settings.
-
-| Optional Actions variable | Value                                                                 |
-| ------------------------- | --------------------------------------------------------------------- |
-| `IOS_BUNDLE_ID`           | Override for `expo.ios.bundleIdentifier` in `app.json`                |
-| `ANDROID_PACKAGE`         | Override for `expo.android.package` in `app.json`                     |
-| `BUILD_NUMBER_OFFSET`     | Nonnegative integer added to the workflow run number; defaults to `0` |
-
-## One-time setup
-
-- Configure the `release` environment in geordangesink/pear-snake-ci-build. See the [central build setup](README.md#repository-setup) for the shared desktop and mobile configuration.
-- Export the signing credentials previously managed by EAS and add them to the secrets above. Keep the same Android signing / upload key used for the existing app; the workflows do not generate a replacement. Export the Apple distribution certificate with its private key and the matching provisioning profiles. See [GitHub's Apple signing guide](https://docs.github.com/en/actions/how-tos/deploy/deploy-to-third-party-platforms/sign-xcode-applications) for exporting and encoding credentials.
-- Set real app identifiers in `app.json` or the variables above. Production builds reject `com.anonymous.*` placeholders. Apple profiles must match the bundle ID, team, and signing certificate. Register preview devices before exporting the ad hoc profile.
-- Create the app records in App Store Connect and Play Console. Grant the App Store Connect API key permission to upload builds. Enable the **Google Play Android Developer API** in the service account's Google Cloud project, and invite its email in Play Console with release permissions. Complete any initial Play Console app setup and first upload required before API publishing.
-- Set `BUILD_NUMBER_OFFSET` in pear-snake-ci-build from the last uploaded store build numbers before starting the first central build. Its workflow run numbering is independent of snake-mobile and EAS.
-- Once the iOS app exists in App Store Connect, set `expo.extra.iosAppStoreId` in `app.json` to its numeric Apple ID (App Information → Apple ID). The update banner opens that listing when an OTA payload requires a newer native build (`pear.json` → `updates.minver`); while it is empty, iOS shows the banner text without a button. Android builds the listing link from `expo.android.package`, including the `ANDROID_PACKAGE` override.
-
-Native projects are regenerated during builds. Keep native customizations in app configuration or config plugins, as described in [Expo's Prebuild documentation](https://docs.expo.dev/workflow/continuous-native-generation/).
+Expo Prebuild regenerates native projects. Keep customizations in app configuration or [config plugins](https://docs.expo.dev/workflow/continuous-native-generation/).

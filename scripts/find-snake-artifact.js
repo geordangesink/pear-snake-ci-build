@@ -23,8 +23,8 @@ if (process.platform === 'linux') {
   run('ditto', ['-x', '-k', archive, extracted])
 } else if (process.platform === 'win32') {
   const archive = one(
-    files.filter((file) => /\.(zip|msix)$/i.test(file)),
-    'Windows app archive'
+    files.filter((file) => file.endsWith('.msix')),
+    'Windows MSIX'
   )
   run(
     'pwsh',

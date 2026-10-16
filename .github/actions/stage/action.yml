@@ -15,23 +15,10 @@ inputs:
     required: true
   upgrade-link:
     description: Expected public Pear link, checked before staging
-    default: ''
+    required: true
   dry-run:
     description: Preview changes without writing to the drive
     default: 'false'
-  github-token:
-    description: Token for reading and committing the snapshot
-    default: ${{ github.token }}
-  app-slug:
-    description: GitHub App slug for snapshot commit attribution
-    default: ''
-outputs:
-  pear-link:
-    description: Public link of the staged drive
-    value: ${{ steps.stage.outputs.pear-link }}
-  pr-url:
-    description: Snapshot PR when direct push to main was unavailable
-    value: ${{ steps.commit.outputs.pr-url }}
 runs:
   using: composite
   steps:
@@ -52,12 +39,12 @@ runs:
 
     - name: Install pear-ci
       shell: bash
-      run: npm install --prefix "$RUNNER_TEMP/pear-stage-tools" --ignore-scripts --no-package-lock --no-audit --no-fund pear-ci@0.1.1
+      run: sfw npm install --prefix "$RUNNER_TEMP/pear-stage-tools" --ignore-scripts --no-package-lock --no-audit --no-fund pear-ci@0.1.1
 
     - name: Fetch app snapshot from main
       shell: bash
       env:
-        GH_TOKEN: ${{ inputs.github-token }}
+        GH_TOKEN: ${{ github.token }}
         SNAPSHOT_PATH: ${{ inputs.snapshot-path }}
       run: |
         mkdir -p "$(dirname "$SNAPSHOT_PATH")"
@@ -65,7 +52,6 @@ runs:
           "/repos/${GITHUB_REPOSITORY}/contents/${SNAPSHOT_PATH}?ref=main" > "$SNAPSHOT_PATH"
 
     - name: Stage app
-      id: stage
       shell: bash
       env:
         NODE_PATH: ${{ runner.temp }}/pear-stage-tools/node_modules
@@ -78,22 +64,14 @@ runs:
       run: node "$GITHUB_ACTION_PATH/../../../scripts/stage.js"
 
     - name: Commit app snapshot to main
-      id: commit
       if: inputs.dry-run != 'true'
       shell: bash
       env:
-        GH_TOKEN: ${{ inputs.github-token }}
-        APP_SLUG: ${{ inputs.app-slug }}
+        GH_TOKEN: ${{ github.token }}
         SNAPSHOT_PATH: ${{ inputs.snapshot-path }}
       run: |
-        if [ -n "$APP_SLUG" ]; then
-          USER_ID=$(gh api "/users/${APP_SLUG}[bot]" -q .id)
-          git config user.name "${APP_SLUG}[bot]"
-          git config user.email "${USER_ID}+${APP_SLUG}[bot]@users.noreply.github.com"
-        else
-          git config user.name 'github-actions[bot]'
-          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-        fi
+        git config user.name 'github-actions[bot]'
+        git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
 
         cp "$SNAPSHOT_PATH" "$RUNNER_TEMP/pear-stage-snapshot.json"
         git fetch origin main
@@ -112,6 +90,5 @@ runs:
           PR_URL=$(gh pr create --base main --head "$BRANCH" \
             --title "Update ${SNAPSHOT_PATH} [run ${GITHUB_RUN_ID}]" \
             --body-file "$RUNNER_TEMP/pear-stage-pr.md")
-          echo "pr-url=$PR_URL" >> "$GITHUB_OUTPUT"
           echo "::warning::Merge the snapshot PR before staging this app again: $PR_URL"
         fi

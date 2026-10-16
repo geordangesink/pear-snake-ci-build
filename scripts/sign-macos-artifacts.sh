@@ -35,16 +35,9 @@ for dmg in "${dmgs[@]}"; do
     cat "$result" >&2
     exit 1
   fi
-  if ! node - "$result" <<'NODE'
-const fs = require('node:fs')
-const result = JSON.parse(fs.readFileSync(process.argv[2], 'utf8'))
-if (result.status !== 'Accepted') {
-  console.error(JSON.stringify(result))
-  process.exit(1)
-}
-NODE
-  then
-    submission_id="$(node -p 'JSON.parse(require("node:fs").readFileSync(process.argv[1], "utf8")).id' "$result")"
+  if ! jq -e '.status == "Accepted"' "$result" > /dev/null; then
+    cat "$result" >&2
+    submission_id="$(jq -r '.id' "$result")"
     xcrun notarytool log "$submission_id" "${credentials[@]}" >&2 || true
     exit 1
   fi

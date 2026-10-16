@@ -1,0 +1,34 @@
+name: Resolve app source
+description: Resolve an app commit and validate its upgrade link
+inputs:
+  repository:
+    description: Source repository
+    required: true
+  ref:
+    description: Source branch, tag, or commit
+    required: true
+  upgrade-key:
+    description: Optional upgrade link override
+    default: ''
+outputs:
+  commit:
+    description: Exact source commit
+    value: ${{ steps.source.outputs.commit }}
+  upgrade-link:
+    description: Validated upgrade link
+    value: ${{ steps.source.outputs.upgrade-link }}
+runs:
+  using: composite
+  steps:
+    - uses: actions/checkout@v4
+      with:
+        repository: ${{ inputs.repository }}
+        ref: ${{ inputs.ref }}
+        path: source
+        persist-credentials: false
+    - name: Resolve source
+      id: source
+      shell: bash
+      env:
+        UPGRADE_KEY: ${{ inputs.upgrade-key }}
+      run: node "$GITHUB_ACTION_PATH/resolve.js"

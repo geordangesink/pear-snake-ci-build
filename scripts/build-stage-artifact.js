@@ -49,7 +49,7 @@ for (const [host, type, extension] of [
 }
 
 if (!count) throw new Error(`No Snake app artifacts found in ${artifacts}`)
-run('npx', args)
+run('sfw', ['npx', ...args])
 console.log(`Prepared ${count} Snake app artifacts in ${output}`)
 
 function run(command, args) {

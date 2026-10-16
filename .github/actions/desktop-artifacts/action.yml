@@ -1,0 +1,26 @@
+name: Select desktop test artifacts
+description: Select packaged apps from a completed desktop build on main
+inputs:
+  run-id:
+    description: Desktop build run ID
+    required: true
+  github-token:
+    description: Token with access to build artifacts
+    default: ${{ github.token }}
+outputs:
+  matrix:
+    description: Available app artifacts and matching runners
+    value: ${{ steps.select.outputs.matrix }}
+  run-id:
+    description: Validated build run ID
+    value: ${{ steps.select.outputs.run-id }}
+runs:
+  using: composite
+  steps:
+    - id: select
+      shell: bash
+      env:
+        GH_TOKEN: ${{ inputs.github-token }}
+        GH_REPO: ${{ github.repository }}
+        RUN_ID: ${{ inputs.run-id }}
+      run: node "$GITHUB_ACTION_PATH/select.js"

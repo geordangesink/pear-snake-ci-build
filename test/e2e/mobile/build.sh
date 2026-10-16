@@ -10,11 +10,11 @@ cd "$GITHUB_WORKSPACE/source"
 git rev-parse HEAD > "$results/source-commit.txt"
 
 if [[ "$platform" == ios ]]; then
-  npm run bundle:bare
+  sfw npm run bundle:bare
 else
-  npx --no-install bare-pack --host android-x64 --linked --out ./src/worker.bundle.js ./workers/main.js
+  sfw npx --no-install bare-pack --host android-x64 --linked --out ./src/worker.bundle.js ./workers/main.js
 fi
-npx --no-install expo prebuild --platform "$platform" --no-install
+sfw npx --no-install expo prebuild --platform "$platform" --no-install
 
 if [[ "$platform" == ios ]]; then
   pod install --project-directory=ios

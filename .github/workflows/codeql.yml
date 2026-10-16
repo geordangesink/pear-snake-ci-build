@@ -29,21 +29,15 @@ jobs:
       matrix:
         include:
           - app: desktop
-            repository: geordangesink/snake
+            repository: holepunchto/snake
           - app: mobile
-            repository: geordangesink/snake-mobile
+            repository: holepunchto/snake-mobile
     steps:
-      - name: Checkout CI repository
-        uses: actions/checkout@v4
-        with:
-          persist-credentials: false
-
       - name: Checkout source
         uses: actions/checkout@v4
         with:
           repository: ${{ matrix.repository }}
           ref: ${{ inputs.ref || 'main' }}
-          path: source
           persist-credentials: false
 
       - name: Record analyzed source
@@ -53,7 +47,7 @@ jobs:
         run: |
           mkdir -p results
           jq -n --arg repository "$SOURCE_REPOSITORY" --arg ref "$SOURCE_REF" \
-            --arg commit "$(git -C source rev-parse HEAD)" \
+            --arg commit "$(git rev-parse HEAD)" \
             '{repository: $repository, ref: $ref, commit: $commit}' > results/source.json
 
       - name: Initialize CodeQL
@@ -61,7 +55,6 @@ jobs:
         with:
           languages: javascript-typescript
           build-mode: none
-          source-root: source
           queries: security-extended
 
       - name: Analyze source
