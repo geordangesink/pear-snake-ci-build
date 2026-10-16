@@ -9,7 +9,7 @@ on:
         default: main
         type: string
       mode:
-        description: Build native apps, build Pear updates, or publish an existing build
+        description: Build native apps, build Pear updates, or build and publish
         type: choice
         default: native
         options:
@@ -49,7 +49,7 @@ on:
         default: false
         type: boolean
       build_run_id:
-        description: Native build run ID when mode is publish
+        description: Optional previous native build run ID for publish mode; blank builds fresh
         type: string
         default: ''
 permissions:
@@ -88,11 +88,11 @@ jobs:
             echo "::error::Select at least one native platform."
             exit 1
           fi
-          if [[ "$MODE" == publish ]]; then
-            [[ "$BUILD_RUN_ID" =~ ^[1-9][0-9]*$ ]] || { echo "::error::Publishing requires a numeric build_run_id."; exit 1; }
+          if [[ "$MODE" == publish && -n "$BUILD_RUN_ID" ]]; then
+            [[ "$BUILD_RUN_ID" =~ ^[1-9][0-9]*$ ]] || { echo "::error::build_run_id must be a numeric GitHub run ID when provided."; exit 1; }
             [[ "$RUN_STAGE" != true ]] || { echo "::error::Publishing an existing build cannot stage new updates."; exit 1; }
-          elif [[ "$PUBLISH" == true && "$MODE" != native ]]; then
-            echo "::error::Publishing after a build requires native mode."
+          elif [[ "$PUBLISH" == true && "$MODE" != native && "$MODE" != publish ]]; then
+            echo "::error::Publishing requires native or publish mode."
             exit 1
           fi
       - name: Select platforms
@@ -107,11 +107,11 @@ jobs:
           ] | map(select(.enabled == "true") | del(.enabled))')
           echo "platforms=$platforms" >> "$GITHUB_OUTPUT"
       - name: Checkout CI repository
-        if: ${{ inputs.mode != 'publish' }}
+        if: ${{ inputs.mode != 'publish' || inputs.build_run_id == '' }}
         uses: holepunchto/actions/checkout@v1
       - name: Resolve snake-mobile source
         id: source
-        if: ${{ inputs.mode != 'publish' }}
+        if: ${{ inputs.mode != 'publish' || inputs.build_run_id == '' }}
         uses: ./.github/actions/resolve-source
         with:
           repository: holepunchto/snake-mobile
@@ -120,7 +120,7 @@ jobs:
   build:
     name: Build ${{ matrix.platform }}
     needs: source
-    if: ${{ inputs.mode == 'native' }}
+    if: ${{ inputs.mode == 'native' || (inputs.mode == 'publish' && inputs.build_run_id == '') }}
     strategy:
       fail-fast: false
       matrix:
@@ -197,7 +197,7 @@ jobs:
           retention-days: 14
   updates:
     needs: source
-    if: ${{ inputs.mode == 'updates' || (inputs.mode == 'native' && inputs.run-stage) }}
+    if: ${{ inputs.mode == 'updates' || ((inputs.mode == 'native' || (inputs.mode == 'publish' && inputs.build_run_id == '')) && inputs.run-stage) }}
     runs-on: ubuntu-latest
     environment: release
     timeout-minutes: 30
@@ -302,7 +302,11 @@ jobs:
     needs:
       - source
       - build
-    if: ${{ always() && !cancelled() && needs.source.result == 'success' && (inputs.mode == 'publish' || (inputs.mode == 'native' && inputs.publish && needs.build.result == 'success')) }}
+    if: |-
+      ${{ always() && !cancelled() && needs.source.result == 'success'
+        && ((inputs.mode == 'publish' && inputs.build_run_id != '')
+          || ((inputs.mode == 'publish' || (inputs.mode == 'native' && inputs.publish))
+            && needs.build.result == 'success')) }}
     strategy:
       fail-fast: false
       matrix:

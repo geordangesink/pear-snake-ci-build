@@ -10,9 +10,11 @@ Select a source `ref` (default `main`) and `build_ios` / `build_android`. Both p
 | ------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `native` (default) | Build selected platforms for distribution. Enable `publish` to submit successful artifacts, or `run-stage` to stage updates after every selected build succeeds. |
 | `updates`          | Bundle Pear updates. Enable `run-stage` to stage them; see [staging setup](README.md#pear-staging).                                                              |
-| `publish`          | Submit signed native artifacts. Set `build_run_id` to the numeric ID from the build's `actions/runs/<id>` URL and select its platforms.                          |
+| `publish`          | Build and submit selected platforms. Set `build_run_id` only to submit artifacts from an existing build.                                                       |
 
-Runs are manual. Publishing uses the selected run's exact artifacts and build numbers; it does not rebuild or renumber them. Artifacts must still be available.
+Runs are manual. In `publish` mode, leave `build_run_id` empty to build with automatic numbering and submit after every selected build succeeds. Enable `run-stage` to also stage updates.
+
+To publish an existing build, enter the numeric ID from its `actions/runs/<id>` URL and select its platforms. This reuses its exact artifacts and build numbers without rebuilding; artifacts must still be available and `run-stage` must be off.
 
 | Platform | Tools                                  | Artifacts                          |
 | -------- | -------------------------------------- | ---------------------------------- |
