@@ -132,8 +132,8 @@ jobs:
       SOURCE_COMMIT: ${{ needs.source.outputs.commit }}
       DEVELOPER_DIR: ${{ matrix.platform == 'ios' && '/Applications/Xcode_26.2.app/Contents/Developer' || '' }}
       APPLE_TEAM_ID: ${{ matrix.platform == 'ios' && secrets.APPLE_TEAM_ID || '' }}
-      BUILD_CERTIFICATE_BASE64: ${{ matrix.platform == 'ios' && secrets.IOS_CERTIFICATE_BASE64 || '' }}
-      P12_PASSWORD: ${{ matrix.platform == 'ios' && secrets.IOS_P12_PASSWORD || '' }}
+      IOS_CERTIFICATE_BASE64: ${{ matrix.platform == 'ios' && secrets.IOS_CERTIFICATE_BASE64 || '' }}
+      IOS_P12_PASSWORD: ${{ matrix.platform == 'ios' && secrets.IOS_P12_PASSWORD || '' }}
       IOS_PROVISIONING_PROFILE_BASE64: ${{ matrix.platform == 'ios' && secrets.IOS_PROVISIONING_PROFILE_BASE64 || '' }}
       ANDROID_KEYSTORE_BASE64: ${{ matrix.platform == 'android' && secrets.ANDROID_KEYSTORE_BASE64 || '' }}
       ANDROID_KEYSTORE_PASSWORD: ${{ matrix.platform == 'android' && secrets.ANDROID_KEYSTORE_PASSWORD || '' }}

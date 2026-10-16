@@ -183,8 +183,8 @@ jobs:
         with:
           channel: ${{ env.CHANNEL }}
           upgrade_key: ${{ needs.prepare.outputs.upgrade-link }}
-          macos_certificate_base64: ${{ secrets.MACOS_CERTIFICATE_BASE64 }}
-          macos_p12_password: ${{ secrets.MACOS_P12_PASSWORD }}
+          macos_development_certificate_base64: ${{ secrets.MACOS_CERTIFICATE_BASE64 }}
+          macos_development_password: ${{ secrets.MACOS_P12_PASSWORD }}
           macos_codesign_identity: ${{ secrets.MACOS_CODESIGN_IDENTITY }}
           macos_notarization_method: appstore_connect
           macos_api_key_base64: ${{ secrets.APPLE_API_PRIVATE_KEY_BASE64 }}

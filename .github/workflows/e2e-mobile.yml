@@ -33,8 +33,6 @@ defaults:
 
 env:
   CI: 'true'
-  IOS_BUNDLE_ID: com.pearsnake.e2e
-  ANDROID_PACKAGE: com.pearsnake.e2e
   MAESTRO_CLI_NO_ANALYTICS: 'true'
 
 jobs:

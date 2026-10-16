@@ -55,7 +55,7 @@ NODE
 else
   adb wait-for-device
   adb install -r "$app"
-  app_id="$ANDROID_PACKAGE"
+  app_id=$(node -p 'require(process.env.GITHUB_WORKSPACE + "/source/android/app/build/outputs/apk/release/output-metadata.json").applicationId')
   device=$(adb get-serialno)
 fi
 

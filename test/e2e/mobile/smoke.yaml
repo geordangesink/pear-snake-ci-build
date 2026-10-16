@@ -11,7 +11,11 @@ appId: ${APP_ID}
 - extendedWaitUntil:
     visible: 'Peers: 0'
     timeout: 120000
-- tapOn: Show
+- runFlow:
+    when:
+      visible: Show
+    commands:
+      - tapOn: Show
 - copyTextFrom: '[0-9a-f]{64}'
 - evalScript: ${output.topic = maestro.copiedText}
 - tapOn: '‹ Leave'
@@ -23,7 +27,11 @@ appId: ${APP_ID}
 - extendedWaitUntil:
     visible: 'Peers: 0'
     timeout: 120000
-- tapOn: Show
+- runFlow:
+    when:
+      visible: Show
+    commands:
+      - tapOn: Show
 - assertVisible: ${output.topic}
 - tapOn: '‹ Leave'
 - assertVisible: Create
