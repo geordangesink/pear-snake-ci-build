@@ -63,7 +63,7 @@ defaults:
     shell: bash
 env:
   CI: 'true'
-  SOURCE_REPOSITORY: holepunchto/snake-mobile
+  SOURCE_REPOSITORY: ${{ github.repository_owner }}/snake-mobile
   SOURCE_REF: ${{ inputs.ref }}
 jobs:
   source:
@@ -114,7 +114,7 @@ jobs:
         if: ${{ inputs.mode != 'publish' || inputs.build_run_id == '' }}
         uses: ./.github/actions/resolve-source
         with:
-          repository: holepunchto/snake-mobile
+          repository: ${{ env.SOURCE_REPOSITORY }}
           ref: ${{ inputs.ref }}
           upgrade-key: ${{ inputs.upgrade-key }}
   build:
@@ -143,7 +143,7 @@ jobs:
       - name: Checkout snake-mobile
         uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
         with:
-          repository: holepunchto/snake-mobile
+          repository: ${{ env.SOURCE_REPOSITORY }}
           ref: ${{ needs.source.outputs.commit }}
           token: ${{ github.token }}
           persist-credentials: false
@@ -205,7 +205,7 @@ jobs:
       - name: Checkout snake-mobile
         uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
         with:
-          repository: holepunchto/snake-mobile
+          repository: ${{ env.SOURCE_REPOSITORY }}
           ref: ${{ needs.source.outputs.commit }}
           token: ${{ github.token }}
           persist-credentials: false

@@ -12,7 +12,7 @@ Builds, artifacts, signing, Pear staging, and mobile store publishing for [snake
 | **E2E Snake Desktop**   | Test packaged apps with two players                                                      |
 | **E2E Snake Mobile**    | Build and test iOS Simulator and Android emulator apps                                   |
 
-Start builds from **Actions**. Source refs default to `main`; each build resolves its ref once so every platform uses the same commit. Staging and publishing are opt-in.
+Start builds from **Actions**. Builds and checks use `snake` and `snake-mobile` under the CI repository's owner: `holepunchto` upstream and `geordangesink` in the fork. Source refs default to `main`; each build resolves its ref once so every platform uses the same commit. Staging and publishing are opt-in.
 
 Desktop supports Linux and macOS x64/arm64, plus Windows x64. Select the platforms to build; all default to off. See [desktop signing](DESKTOP_SIGNING.md) for macOS credentials and the required `windows-signer` runner.
 

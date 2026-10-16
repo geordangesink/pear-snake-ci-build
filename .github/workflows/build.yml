@@ -58,7 +58,7 @@ jobs:
         id: source
         uses: ./.github/actions/resolve-source
         with:
-          repository: holepunchto/snake
+          repository: ${{ github.repository_owner }}/snake
           ref: ${{ inputs.ref }}
           upgrade-key: ${{ inputs.upgrade-key }}
       - name: Select build platforms
@@ -94,7 +94,7 @@ jobs:
       - name: Checkout snake
         uses: actions/checkout@v4
         with:
-          repository: holepunchto/snake
+          repository: ${{ github.repository_owner }}/snake
           ref: ${{ needs.prepare.outputs.sha }}
           token: ${{ github.token }}
           persist-credentials: false
@@ -152,7 +152,7 @@ jobs:
       - name: Checkout snake
         uses: actions/checkout@v4
         with:
-          repository: holepunchto/snake
+          repository: ${{ github.repository_owner }}/snake
           ref: ${{ needs.prepare.outputs.sha }}
           token: ${{ github.token }}
           persist-credentials: false
@@ -225,7 +225,7 @@ jobs:
       - name: Checkout snake
         uses: actions/checkout@v4
         with:
-          repository: holepunchto/snake
+          repository: ${{ github.repository_owner }}/snake
           ref: ${{ needs.prepare.outputs.sha }}
           token: ${{ github.token }}
           persist-credentials: false
@@ -302,7 +302,7 @@ jobs:
       - name: Checkout snake source
         uses: actions/checkout@v4
         with:
-          repository: holepunchto/snake
+          repository: ${{ github.repository_owner }}/snake
           ref: ${{ needs.prepare.outputs.sha }}
           path: snake-source
           persist-credentials: false
