@@ -107,17 +107,13 @@ jobs:
       - name: Setup bare
         uses: holepunchto/actions/setup-bare@v1
       - name: Build AppImage
-        env:
-          UPGRADE_KEY: ${{ needs.prepare.outputs.upgrade-link }}
-          NODE_ENV: production
-          NODE_AUTH_TOKEN: ${{ github.token }}
-        run: sfw npm run make -- --targets=pear-electron-forge-maker-appimage
-      - name: Upload AppImage
-        uses: actions/upload-artifact@v4
+        uses: holepunchto/actions/make-pear-app@v1
         with:
-          name: snake-linux-${{ matrix.arch }}-appimage
-          path: out/make/**/*.AppImage
-          if-no-files-found: error
+          script: make:linux:appimage
+          channel: ${{ env.CHANNEL }}
+          upgrade_key: ${{ needs.prepare.outputs.upgrade-link }}
+          linux_appimage: '*.AppImage'
+          linux_appimage_artifact_name: snake-linux-${{ matrix.arch }}-appimage
   build-macos:
     name: macOS / ${{ matrix.arch }}
     needs: prepare
@@ -156,18 +152,6 @@ jobs:
           ref: ${{ needs.prepare.outputs.sha }}
           token: ${{ github.token }}
           persist-credentials: false
-      - name: Checkout macOS build tools
-        uses: actions/checkout@v4
-        with:
-          ref: ${{ github.sha }}
-          path: .snake-ci
-          sparse-checkout: scripts/sign-macos-artifacts.sh
-          sparse-checkout-cone-mode: false
-          persist-credentials: false
-      - name: Prepare macOS build tools
-        run: |
-          cp .snake-ci/scripts/sign-macos-artifacts.sh "$RUNNER_TEMP/sign-macos-artifacts.sh"
-          rm -rf .snake-ci
       - name: Install dependencies
         uses: holepunchto/actions/node-base-extended@v1
         with:
@@ -190,23 +174,9 @@ jobs:
           macos_api_key_base64: ${{ secrets.APPLE_API_PRIVATE_KEY_BASE64 }}
           macos_api_key_id: ${{ secrets.APPLE_API_KEY_ID }}
           macos_api_issuer: ${{ secrets.APPLE_API_ISSUER_ID }}
-      - name: Sign and verify macOS artifacts
-        env:
-          MACOS_CODESIGN_IDENTITY: ${{ secrets.MACOS_CODESIGN_IDENTITY }}
-          ARCH: ${{ matrix.arch }}
-        run: bash "$RUNNER_TEMP/sign-macos-artifacts.sh" "$ARCH"
-      - name: Upload signed macOS DMG
-        uses: actions/upload-artifact@v4
-        with:
-          name: snake-darwin-${{ matrix.arch }}-dmg
-          path: out/make/**/*.dmg
-          if-no-files-found: error
-      - name: Upload signed macOS app
-        uses: actions/upload-artifact@v4
-        with:
-          name: snake-darwin-${{ matrix.arch }}-app.zip
-          path: ${{ runner.temp }}/snake-darwin-${{ matrix.arch }}-app.zip
-          if-no-files-found: error
+          macos_dmg: '*.dmg'
+          macos_dmg_artifact_name: snake-darwin-${{ matrix.arch }}-dmg
+          macos_app: snake-darwin-${{ matrix.arch }}-app.zip
   build-win32-x64:
     needs: prepare
     if: ${{ inputs.run-windows-x64 }}
@@ -229,25 +199,6 @@ jobs:
           ref: ${{ needs.prepare.outputs.sha }}
           token: ${{ github.token }}
           persist-credentials: false
-      - name: Checkout Windows signing tools
-        uses: actions/checkout@v4
-        with:
-          ref: ${{ github.sha }}
-          path: .snake-ci
-          sparse-checkout: |
-            scripts/prepare-windows-signing.ps1
-            scripts/verify-windows-signing.ps1
-          sparse-checkout-cone-mode: false
-          persist-credentials: false
-      - name: Prepare Windows signing
-        id: signing
-        shell: pwsh
-        env:
-          WINDOWS_CERT_SHA1: ${{ secrets.WINDOWS_CERT_SHA1 }}
-        run: |
-          Copy-Item .snake-ci/scripts/*-windows-signing.ps1 $env:RUNNER_TEMP
-          Remove-Item .snake-ci -Recurse -Force
-          & "$env:RUNNER_TEMP/prepare-windows-signing.ps1"
       - name: Install dependencies
         uses: holepunchto/actions/node-base-extended@v1
         with:
@@ -262,18 +213,9 @@ jobs:
           channel: ${{ env.CHANNEL }}
           upgrade_key: ${{ needs.prepare.outputs.upgrade-link }}
           windows_signing_method: cert_sha1
-          windows_cert_sha1: ${{ steps.signing.outputs.thumbprint }}
-      - name: Verify Windows package signature
-        shell: pwsh
-        env:
-          WINDOWS_CERT_SHA1: ${{ steps.signing.outputs.thumbprint }}
-        run: '& "$env:RUNNER_TEMP/verify-windows-signing.ps1"'
-      - name: Upload signed Windows app
-        uses: actions/upload-artifact@v4
-        with:
-          name: snake-win32-x64-msix
-          path: out/make/**/*.msix
-          if-no-files-found: error
+          windows_cert_sha1: ${{ secrets.WINDOWS_CERT_SHA1 }}
+          windows_msix: '*.msix'
+          windows_msix_artifact_name: snake-win32-x64-msix
   stage:
     needs:
       - prepare
