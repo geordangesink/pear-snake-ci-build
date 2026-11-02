@@ -271,11 +271,9 @@ jobs:
           path: ${{ runner.temp }}/stage.tar.gz
           if-no-files-found: error
       - name: Stage with pear-ci
-        uses: ./.github/actions/stage
+        uses: holepunchto/actions/pear-ci@v1
         with:
           namespace: ${{ vars.PEAR_DESKTOP_NAMESPACE || format('snake-{0}-v1', inputs.channel) }}
           primary-key: ${{ secrets.PEAR_DESKTOP_PRIMARY_KEY }}
-          snapshot-path: ci/snake-snapshot.json
           target: ./out/snake-stage
-          upgrade-link: ${{ needs.prepare.outputs.upgrade-link }}
           dry-run: ${{ inputs.stage-dry-run }}
