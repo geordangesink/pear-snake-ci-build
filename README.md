@@ -24,20 +24,20 @@ Keep secrets and variables in this repository or its `release` environment. Sour
 
 ### Pear staging
 
-Each app uses its own primary key and snapshot:
+Both apps share a primary key and snapshot:
 
-| App     | Secret                     | Snapshot                        | Default namespace           |
-| ------- | -------------------------- | ------------------------------- | --------------------------- |
-| Desktop | `PEAR_DESKTOP_PRIMARY_KEY` | `ci/snake-snapshot.json`        | `snake-<channel>-v1`        |
-| Mobile  | `PEAR_MOBILE_PRIMARY_KEY`  | `ci/snake-mobile-snapshot.json` | `snake-mobile-<channel>-v1` |
+| App     | Secret             | Snapshot           | Default namespace           |
+| ------- | ------------------ | ------------------ | --------------------------- |
+| Desktop | `PEAR_PRIMARY_KEY` | `ci/snapshot.json` | `snake-<channel>-v1`        |
+| Mobile  | `PEAR_PRIMARY_KEY` | `ci/snapshot.json` | `snake-mobile-<channel>-v1` |
 
 Primary keys are 64-character hex Corestore identities. `channel` is `dev`, `stage`, or `production`. Optional `PEAR_DESKTOP_NAMESPACE` / `PEAR_MOBILE_NAMESPACE` variables replace the entire corresponding namespace.
 
-Create a primary key for each app and choose its namespace before the first release. Keep both stable for subsequent updates. Builds require a valid `package.json` `upgrade` link or explicit `upgrade-key` override. Packages and update bundles use that same link; staging rejects an identity that derives a different link.
+Create a shared primary key and choose each app's namespace before the first release. Keep both stable for subsequent updates. Builds require a valid `package.json` `upgrade` link or explicit `upgrade-key` override. Packages and update bundles use that same link.
 
 Enable `run-stage` to stage after every selected build succeeds. Mobile `updates` mode can stage independently; its `snake-mobile-stage` artifact contains `stage.tar.gz` and source metadata in `source.json`. `stage-dry-run` previews changes without publishing or updating a snapshot.
 
-Both snapshot files start as `[]` and must exist on `main` before the first stage. Subsequent snapshot writes are serialized and committed there. If direct push fails, staging opens a snapshot PR; merge it before staging that app again. The local staging action calls the `pear-ci` package directly, which accepts separate snapshot paths. The shared GitHub action currently fixes the path to `ci/snapshot.json`.
+The shared snapshot starts as `[]` and must exist on `main` before the first stage. Subsequent snapshot writes are serialized and committed there. If direct push fails, staging opens a snapshot PR; merge it before staging either app again.
 
 Snapshot writes use the automatic `GITHUB_TOKEN` with Contents write and Pull requests write permissions. Enable **Settings → Actions → General → Allow GitHub Actions to create and approve pull requests** so staging can open snapshot PRs when `main` is protected.
 
