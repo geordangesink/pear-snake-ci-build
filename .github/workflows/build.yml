@@ -274,6 +274,6 @@ jobs:
         uses: holepunchto/actions/pear-ci@v1
         with:
           namespace: ${{ vars.PEAR_DESKTOP_NAMESPACE || format('snake-{0}-v1', inputs.channel) }}
-          primary-key: ${{ secrets.PEAR_DESKTOP_PRIMARY_KEY }}
+          primary-key: ${{ secrets.PEAR_PRIMARY_KEY }}
           target: ./out/snake-stage
           dry-run: ${{ inputs.stage-dry-run }}

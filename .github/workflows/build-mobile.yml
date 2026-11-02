@@ -292,7 +292,7 @@ jobs:
         uses: holepunchto/actions/pear-ci@v1
         with:
           namespace: ${{ vars.PEAR_MOBILE_NAMESPACE || format('snake-mobile-{0}-v1', inputs.channel) }}
-          primary-key: ${{ secrets.PEAR_MOBILE_PRIMARY_KEY }}
+          primary-key: ${{ secrets.PEAR_PRIMARY_KEY }}
           target: ./out/stage
           dry-run: ${{ inputs.stage-dry-run }}
   submit:
