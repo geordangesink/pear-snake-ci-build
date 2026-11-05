@@ -102,6 +102,7 @@ jobs:
         uses: holepunchto/actions/node-base-extended@v1
         with:
           allow-git: all
+          clean-install: true
           version: 24
           node-auth-token: ${{ github.token }}
       - name: Setup bare
@@ -156,6 +157,7 @@ jobs:
         uses: holepunchto/actions/node-base-extended@v1
         with:
           allow-git: all
+          clean-install: true
           version: 24
           node-auth-token: ${{ github.token }}
       - name: Build native DMG dependencies
@@ -203,6 +205,7 @@ jobs:
         uses: holepunchto/actions/node-base-extended@v1
         with:
           allow-git: all
+          clean-install: true
           version: 24
           node-auth-token: ${{ github.token }}
       - name: Setup bare
