@@ -147,7 +147,7 @@ jobs:
           ref: ${{ needs.source.outputs.commit }}
           token: ${{ github.token }}
           persist-credentials: false
-      - name: Checkout build configuration
+      - name: Checkout CI repository
         uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
         with:
           ref: ${{ github.sha }}
