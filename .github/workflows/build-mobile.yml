@@ -209,22 +209,16 @@ jobs:
           ref: ${{ needs.source.outputs.commit }}
           token: ${{ github.token }}
           persist-credentials: false
-      - name: Checkout build configuration
-        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
-        with:
-          ref: ${{ github.sha }}
-          path: ci
-          persist-credentials: false
-      - name: Set upgrade link
-        env:
-          UPGRADE_KEY: ${{ needs.source.outputs.upgrade-link }}
-        run: node ci/.github/actions/resolve-source/upgrade-link.js package.json --write
       - name: Install dependencies
         uses: holepunchto/actions/node-base-extended@v1
         with:
           version: 24
           clean-install: true
           node-auth-token: ${{ github.token }}
+      - name: Set upgrade link
+        env:
+          UPGRADE_KEY: ${{ needs.source.outputs.upgrade-link }}
+        run: npm pkg set "upgrade=$UPGRADE_KEY"
       - name: Record source
         env:
           SOURCE_COMMIT: ${{ needs.source.outputs.commit }}
