@@ -26,17 +26,11 @@ if (process.platform === 'linux') {
     files.filter((file) => file.endsWith('.msix')),
     'Windows MSIX'
   )
-  run(
-    'pwsh',
-    [
-      '-NoProfile',
-      '-Command',
-      '[System.IO.Compression.ZipFile]::ExtractToDirectory($env:SNAKE_ARCHIVE, $env:SNAKE_EXTRACTED)'
-    ],
-    {
-      env: { ...process.env, SNAKE_ARCHIVE: archive, SNAKE_EXTRACTED: extracted }
-    }
-  )
+  const programFiles = process.env['PROGRAMFILES(X86)'] || process.env.PROGRAMFILES
+  const sdkBin = path.join(programFiles, 'Windows Kits', '10', 'bin')
+  const [makeAppx] = fs.globSync('*/x64/makeappx.exe', { cwd: sdkBin })
+  if (!makeAppx) throw new Error('MakeAppx not found; install the Windows SDK packaging tools')
+  run(path.join(sdkBin, makeAppx), ['unpack', '/p', archive, '/d', extracted, '/o'])
 } else {
   throw new Error(`Unsupported platform: ${process.platform}`)
 }

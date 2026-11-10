@@ -11,17 +11,18 @@ inputs:
 runs:
   using: composite
   steps:
-    - name: Validate and set upgrade link
-      shell: bash
-      env:
-        UPGRADE_KEY: ${{ inputs.upgrade-key }}
-      run: node "$GITHUB_ACTION_PATH/../resolve-source/upgrade-link.js" package.json --write
     - name: Install dependencies
       uses: holepunchto/actions/node-base-extended@v1
       with:
         version: 24
         clean-install: true
         node-auth-token: ${{ github.token }}
+    - name: Set upgrade link
+      if: ${{ inputs.upgrade-key != '' }}
+      shell: bash
+      env:
+        UPGRADE_KEY: ${{ inputs.upgrade-key }}
+      run: npm pkg set "upgrade=$UPGRADE_KEY"
     - name: Prepare build metadata
       shell: bash
       env:

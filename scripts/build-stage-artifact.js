@@ -8,7 +8,7 @@ const packagePath = path.resolve(process.env.PACKAGE_JSON_PATH || 'snake-source/
 const pkg = JSON.parse(fs.readFileSync(packagePath, 'utf8'))
 const product = pkg.productName || pkg.name
 const inputs = path.join(path.dirname(output), 'stage-inputs')
-const args = ['--yes', 'pear-build@1.2.0', '--target', output]
+const args = ['--yes', 'pear-build@1.3.2', '--target', output]
 
 if (fs.existsSync(output) || fs.existsSync(inputs)) {
   throw new Error('Stage output already exists; use a fresh output directory')

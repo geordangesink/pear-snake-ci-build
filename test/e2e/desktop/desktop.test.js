@@ -119,7 +119,12 @@ test(
           .catch(() => {})
         await app.close()
       }
-      fs.rmSync(storage, { recursive: true, force: true })
+      fs.rmSync(storage, {
+        recursive: true,
+        force: true,
+        maxRetries: 20,
+        retryDelay: 500
+      })
     }
   }
 )
