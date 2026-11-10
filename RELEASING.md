@@ -1,6 +1,8 @@
 # Releasing Snake Mobile
 
-Run **Build Snake Mobile** in [pear-snake-ci-build Actions](https://github.com/holepunchto/pear-snake-ci-build/actions). Source configuration paths below are relative to `snake-mobile`; credentials belong in this CI repository's `release` environment or repository settings.
+Run **Build Snake Mobile** in [pear-snake-ci-build Actions](https://github.com/holepunchto/pear-snake-ci-build/actions). Source configuration paths below are relative to `snake-mobile`; credentials belong in this CI repository's protected `release` environment.
+
+Build and signing scripts live in `snake-mobile`. This workflow runs them from the checked-out source, passing signing credentials only to the build/signing step. Store publishing stays in this repository.
 
 ## Build and publish
 

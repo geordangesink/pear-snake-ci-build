@@ -20,7 +20,7 @@ See [releasing mobile](RELEASING.md) for the `native`, `updates`, and `publish` 
 
 ## Repository setup
 
-Keep secrets and variables in this repository or its `release` environment. Source repositories must be public.
+Keep secrets in this repository's protected `release` environment. Optional variables can be set at repository or environment scope. Source repositories must be public.
 
 ### Pear staging
 
