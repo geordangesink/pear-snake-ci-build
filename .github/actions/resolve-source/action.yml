@@ -1,5 +1,5 @@
 name: Resolve app source
-description: Resolve an app commit and validate its upgrade link
+description: Resolve an app commit and check for upgrade key
 inputs:
   repository:
     description: Source repository
@@ -15,7 +15,7 @@ outputs:
     description: Exact source commit
     value: ${{ steps.source.outputs.commit }}
   upgrade-link:
-    description: Validated upgrade link
+    description: Upgrade link
     value: ${{ steps.source.outputs.upgrade-link }}
 runs:
   using: composite
@@ -31,4 +31,12 @@ runs:
       shell: bash
       env:
         UPGRADE_KEY: ${{ inputs.upgrade-key }}
-      run: node "$GITHUB_ACTION_PATH/resolve.js"
+      run: |
+        commit=$(git -C source rev-parse HEAD)
+        link="${UPGRADE_KEY:-$(jq -r '.upgrade // empty' source/package.json)}"
+        if [[ -z "${link//[[:space:]]/}" ]]; then
+          echo '::error::Set upgrade key in package.json or provide upgrade-key.'
+          exit 1
+        fi
+        echo "commit=$commit" >> "$GITHUB_OUTPUT"
+        echo "upgrade-link=$link" >> "$GITHUB_OUTPUT"

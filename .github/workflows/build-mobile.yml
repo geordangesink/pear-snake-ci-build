@@ -63,7 +63,7 @@ defaults:
     shell: bash
 env:
   CI: 'true'
-  SOURCE_REPOSITORY: ${{ github.repository_owner }}/snake-mobile
+  SOURCE_REPOSITORY: holepunchto/snake-mobile
   SOURCE_REF: ${{ inputs.ref }}
 jobs:
   source:
@@ -131,14 +131,6 @@ jobs:
     env:
       SOURCE_COMMIT: ${{ needs.source.outputs.commit }}
       DEVELOPER_DIR: ${{ matrix.platform == 'ios' && '/Applications/Xcode_26.2.app/Contents/Developer' || '' }}
-      APPLE_TEAM_ID: ${{ matrix.platform == 'ios' && secrets.APPLE_TEAM_ID || '' }}
-      IOS_CERTIFICATE_BASE64: ${{ matrix.platform == 'ios' && secrets.IOS_CERTIFICATE_BASE64 || '' }}
-      IOS_P12_PASSWORD: ${{ matrix.platform == 'ios' && secrets.IOS_P12_PASSWORD || '' }}
-      IOS_PROVISIONING_PROFILE_BASE64: ${{ matrix.platform == 'ios' && secrets.IOS_PROVISIONING_PROFILE_BASE64 || '' }}
-      ANDROID_KEYSTORE_BASE64: ${{ matrix.platform == 'android' && secrets.ANDROID_KEYSTORE_BASE64 || '' }}
-      ANDROID_KEYSTORE_PASSWORD: ${{ matrix.platform == 'android' && secrets.ANDROID_KEYSTORE_PASSWORD || '' }}
-      ANDROID_KEY_ALIAS: ${{ matrix.platform == 'android' && secrets.ANDROID_KEY_ALIAS || '' }}
-      ANDROID_KEY_PASSWORD: ${{ matrix.platform == 'android' && secrets.ANDROID_KEY_PASSWORD || '' }}
     steps:
       - name: Checkout snake-mobile
         uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
@@ -147,7 +139,7 @@ jobs:
           ref: ${{ needs.source.outputs.commit }}
           token: ${{ github.token }}
           persist-credentials: false
-      - name: Checkout build configuration
+      - name: Checkout CI repository
         uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
         with:
           ref: ${{ github.sha }}
@@ -174,6 +166,14 @@ jobs:
       - name: Build signed app
         env:
           BUILD_PLATFORM: ${{ matrix.platform }}
+          APPLE_TEAM_ID: ${{ matrix.platform == 'ios' && secrets.APPLE_TEAM_ID || '' }}
+          IOS_CERTIFICATE_BASE64: ${{ matrix.platform == 'ios' && secrets.IOS_CERTIFICATE_BASE64 || '' }}
+          IOS_P12_PASSWORD: ${{ matrix.platform == 'ios' && secrets.IOS_P12_PASSWORD || '' }}
+          IOS_PROVISIONING_PROFILE_BASE64: ${{ matrix.platform == 'ios' && secrets.IOS_PROVISIONING_PROFILE_BASE64 || '' }}
+          ANDROID_KEYSTORE_BASE64: ${{ matrix.platform == 'android' && secrets.ANDROID_KEYSTORE_BASE64 || '' }}
+          ANDROID_KEYSTORE_PASSWORD: ${{ matrix.platform == 'android' && secrets.ANDROID_KEYSTORE_PASSWORD || '' }}
+          ANDROID_KEY_ALIAS: ${{ matrix.platform == 'android' && secrets.ANDROID_KEY_ALIAS || '' }}
+          ANDROID_KEY_PASSWORD: ${{ matrix.platform == 'android' && secrets.ANDROID_KEY_PASSWORD || '' }}
         run: bash "scripts/build-$BUILD_PLATFORM.sh"
       - name: Upload native build
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
@@ -209,22 +209,16 @@ jobs:
           ref: ${{ needs.source.outputs.commit }}
           token: ${{ github.token }}
           persist-credentials: false
-      - name: Checkout build configuration
-        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
-        with:
-          ref: ${{ github.sha }}
-          path: ci
-          persist-credentials: false
-      - name: Set upgrade link
-        env:
-          UPGRADE_KEY: ${{ needs.source.outputs.upgrade-link }}
-        run: node ci/.github/actions/resolve-source/upgrade-link.js package.json --write
       - name: Install dependencies
         uses: holepunchto/actions/node-base-extended@v1
         with:
           version: 24
           clean-install: true
           node-auth-token: ${{ github.token }}
+      - name: Set upgrade link
+        env:
+          UPGRADE_KEY: ${{ needs.source.outputs.upgrade-link }}
+        run: npm pkg set "upgrade=$UPGRADE_KEY"
       - name: Record source
         env:
           SOURCE_COMMIT: ${{ needs.source.outputs.commit }}
@@ -289,13 +283,11 @@ jobs:
           mkdir -p out/stage
           tar -xzf out/artifacts/stage.tar.gz -C out/stage
       - name: Stage with pear-ci
-        uses: ./.github/actions/stage
+        uses: holepunchto/actions/pear-ci@v1
         with:
           namespace: ${{ vars.PEAR_MOBILE_NAMESPACE || format('snake-mobile-{0}-v1', inputs.channel) }}
-          primary-key: ${{ secrets.PEAR_MOBILE_PRIMARY_KEY }}
-          snapshot-path: ci/snake-mobile-snapshot.json
+          primary-key: ${{ secrets.PEAR_PRIMARY_KEY }}
           target: ./out/stage
-          upgrade-link: ${{ needs.source.outputs.upgrade-link }}
           dry-run: ${{ inputs.stage-dry-run }}
   submit:
     name: Publish ${{ matrix.platform }}
