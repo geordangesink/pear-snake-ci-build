@@ -29,9 +29,9 @@ jobs:
       matrix:
         include:
           - app: desktop
-            repository: holepunchto/snake
+            repository: ${{ github.repository_owner }}/snake
           - app: mobile
-            repository: holepunchto/snake-mobile
+            repository: ${{ github.repository_owner }}/snake-mobile
     steps:
       - name: Checkout source
         uses: actions/checkout@v4
