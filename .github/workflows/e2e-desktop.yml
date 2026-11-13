@@ -46,10 +46,11 @@ jobs:
     steps:
       - name: Checkout E2E suite
         uses: holepunchto/actions/checkout@v1
-      - uses: holepunchto/actions/setup-node@v1
+      - name: Install CI tools
+        uses: holepunchto/actions/node-base-extended@v1
         with:
           version: 24
-      - uses: holepunchto/actions/setup-socket@v1
+          clean-install: true
       - name: Install E2E dependencies
         working-directory: test/e2e/desktop
         run: sfw npm ci --ignore-scripts
@@ -66,7 +67,7 @@ jobs:
           path: artifact
       - name: Extract app for smoke test
         id: app
-        run: node scripts/find-snake-artifact.js artifact
+        run: node scripts/extract-desktop-app.js artifact
       - name: Exercise native IPC and multiplayer
         working-directory: test/e2e/desktop
         env:

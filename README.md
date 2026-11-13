@@ -14,13 +14,15 @@ Builds, artifacts, signing, Pear staging, and mobile store publishing for [snake
 
 Start builds from **Actions**. Builds and checks use `holepunchto/snake` and `holepunchto/snake-mobile`. Source refs default to `main`; each build resolves its ref once so every platform uses the same commit. Staging and publishing are opt-in.
 
-Desktop supports Linux and macOS x64/arm64, plus Windows x64. Select the platforms to build; all default to off. See [desktop signing](DESKTOP_SIGNING.md) for macOS credentials and the required `windows-signer` runner.
+Desktop supports Linux and macOS x64/arm64, plus Windows x64. Select the platforms to build; all default to off. Windows signing requires a dedicated `windows-signer` runner.
 
 See [releasing mobile](RELEASING.md) for the `native`, `updates`, and `publish` modes, credentials, and automatic build numbering. Mobile app identifiers come from `app.json`. Artifacts are retained for 14 days.
 
 ## Repository setup
 
-Keep secrets in this repository's protected `release` environment. Optional variables can be set at repository or environment scope. Source repositories must be public.
+Keep secrets only in this repository's protected `release` environment. Remove repository-level duplicates and exclude this repository from organization-level copies of those credentials. Optional variables can be set at repository or environment scope. Source repositories must be public.
+
+App scripts and configuration run on hosted build and test runners without release credentials. Signing, staging, and publishing run separately using CI-owned scripts and trusted tools; they consume the built artifacts without executing app code. `windows-signer` is reserved for signing.
 
 ### Pear staging
 
@@ -51,4 +53,6 @@ Validate workflows locally with:
 
 ```sh
 actionlint -config-file .github/actionlint.yaml .github/workflows/*.yml
+npm ci --ignore-scripts
+npm test
 ```

@@ -118,7 +118,7 @@ jobs:
           ref: ${{ inputs.ref }}
           upgrade-key: ${{ inputs.upgrade-key }}
   build:
-    name: Build ${{ matrix.platform }}
+    name: Compile ${{ matrix.platform }}
     needs: source
     if: ${{ inputs.mode == 'native' || (inputs.mode == 'publish' && inputs.build_run_id == '') }}
     strategy:
@@ -126,7 +126,6 @@ jobs:
       matrix:
         include: ${{ fromJSON(needs.source.outputs.platforms) }}
     runs-on: ${{ matrix.runner }}
-    environment: release
     timeout-minutes: 90
     env:
       SOURCE_COMMIT: ${{ needs.source.outputs.commit }}
@@ -137,7 +136,6 @@ jobs:
         with:
           repository: ${{ env.SOURCE_REPOSITORY }}
           ref: ${{ needs.source.outputs.commit }}
-          token: ${{ github.token }}
           persist-credentials: false
       - name: Checkout CI repository
         uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
@@ -162,31 +160,25 @@ jobs:
         run: pod install
         if: ${{ matrix.platform == 'ios' }}
       - uses: gradle/actions/setup-gradle@0b6dd653ba04f4f93bf581ec31e66cbd7dcb644d
+        with:
+          gradle-version: '9.0.0'
         if: ${{ matrix.platform == 'android' }}
-      - name: Build signed app
-        env:
-          BUILD_PLATFORM: ${{ matrix.platform }}
-          APPLE_TEAM_ID: ${{ matrix.platform == 'ios' && secrets.APPLE_TEAM_ID || '' }}
-          IOS_CERTIFICATE_BASE64: ${{ matrix.platform == 'ios' && secrets.IOS_CERTIFICATE_BASE64 || '' }}
-          IOS_P12_PASSWORD: ${{ matrix.platform == 'ios' && secrets.IOS_P12_PASSWORD || '' }}
-          IOS_PROVISIONING_PROFILE_BASE64: ${{ matrix.platform == 'ios' && secrets.IOS_PROVISIONING_PROFILE_BASE64 || '' }}
-          ANDROID_KEYSTORE_BASE64: ${{ matrix.platform == 'android' && secrets.ANDROID_KEYSTORE_BASE64 || '' }}
-          ANDROID_KEYSTORE_PASSWORD: ${{ matrix.platform == 'android' && secrets.ANDROID_KEYSTORE_PASSWORD || '' }}
-          ANDROID_KEY_ALIAS: ${{ matrix.platform == 'android' && secrets.ANDROID_KEY_ALIAS || '' }}
-          ANDROID_KEY_PASSWORD: ${{ matrix.platform == 'android' && secrets.ANDROID_KEY_PASSWORD || '' }}
-        run: bash "scripts/build-$BUILD_PLATFORM.sh"
-      - name: Upload native build
+      - name: Compile app
+        uses: holepunchto/actions/run-npm-script@v1
+        with:
+          script: build:${{ matrix.platform }}
+      - name: Upload unsigned build
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
-          name: mobile-${{ matrix.platform }}
+          name: unsigned-mobile-${{ matrix.platform }}
           overwrite: true
           path: |
-            dist/${{ matrix.platform }}/*.ipa
-            dist/${{ matrix.platform }}/*.apk
-            dist/${{ matrix.platform }}/*.aab
+            dist/${{ matrix.platform }}/unsigned.zip
+            dist/${{ matrix.platform }}/Snake.apk
+            dist/${{ matrix.platform }}/Snake.aab
             dist/${{ matrix.platform }}/build-metadata.json
           if-no-files-found: error
-          retention-days: 14
+          retention-days: 1
       - name: Upload build logs
         if: ${{ failure() }}
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
@@ -195,11 +187,94 @@ jobs:
           overwrite: true
           path: dist/${{ matrix.platform }}/*.log
           retention-days: 14
+  sign:
+    name: Sign ${{ matrix.platform }}
+    needs:
+      - source
+      - build
+    if: ${{ needs.build.result == 'success' }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include: ${{ fromJSON(needs.source.outputs.platforms) }}
+    runs-on: ${{ matrix.runner }}
+    environment: release
+    timeout-minutes: 30
+    env:
+      ARTIFACT_DIR: ${{ github.workspace }}/out/unsigned-mobile-${{ matrix.platform }}
+      BUILD_PLATFORM: ${{ matrix.platform }}
+      DEVELOPER_DIR: ${{ matrix.platform == 'ios' && '/Applications/Xcode_26.2.app/Contents/Developer' || '' }}
+    steps:
+      - name: Checkout CI repository
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - uses: holepunchto/actions/setup-java@v1
+        with:
+          version: 17
+        if: ${{ matrix.platform == 'android' }}
+      - uses: android-actions/setup-android@9fc6c4e9069bf8d3d10b2204b1fb8f6ef7065407
+        with:
+          packages: build-tools;36.0.0
+        if: ${{ matrix.platform == 'android' }}
+      - name: Install CI tools
+        if: ${{ matrix.platform == 'ios' }}
+        uses: holepunchto/actions/node-base-extended@v1
+        with:
+          version: 24
+          clean-install: true
+      - name: Download unsigned build
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: unsigned-mobile-${{ matrix.platform }}
+          path: ${{ env.ARTIFACT_DIR }}
+      - name: Extract iOS archive
+        if: ${{ matrix.platform == 'ios' }}
+        run: node scripts/safe-extract.js "$ARTIFACT_DIR/unsigned.zip" "$ARTIFACT_DIR/archive"
+      - name: Set up iOS signing certificate
+        if: ${{ matrix.platform == 'ios' }}
+        uses: holepunchto/actions/setup-certificates/macos@v1
+        with:
+          distribution_certificate_base64: ${{ secrets.IOS_CERTIFICATE_BASE64 }}
+          distribution_password: ${{ secrets.IOS_P12_PASSWORD }}
+      - name: Sign app
+        env:
+          APPLE_TEAM_ID: ${{ matrix.platform == 'ios' && secrets.APPLE_TEAM_ID || '' }}
+          IOS_PROVISIONING_PROFILE_BASE64: ${{ matrix.platform == 'ios' && secrets.IOS_PROVISIONING_PROFILE_BASE64 || '' }}
+          ANDROID_KEYSTORE_BASE64: ${{ matrix.platform == 'android' && secrets.ANDROID_KEYSTORE_BASE64 || '' }}
+          ANDROID_KEYSTORE_PASSWORD: ${{ matrix.platform == 'android' && secrets.ANDROID_KEYSTORE_PASSWORD || '' }}
+          ANDROID_KEY_ALIAS: ${{ matrix.platform == 'android' && secrets.ANDROID_KEY_ALIAS || '' }}
+          ANDROID_KEY_PASSWORD: ${{ matrix.platform == 'android' && secrets.ANDROID_KEY_PASSWORD || '' }}
+        run: bash "scripts/mobile/sign-$BUILD_PLATFORM.sh"
+      - name: Remove iOS signing certificate
+        if: ${{ always() && matrix.platform == 'ios' }}
+        run: |
+          security delete-keychain "$RUNNER_TEMP/app-signing.keychain-db" 2>/dev/null || true
+          rm -f "$RUNNER_TEMP/distribution_certificate.p12"
+      - name: Upload signed build
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: mobile-${{ matrix.platform }}
+          overwrite: true
+          path: |
+            dist/${{ matrix.platform }}/Snake.ipa
+            dist/${{ matrix.platform }}/Snake.apk
+            dist/${{ matrix.platform }}/Snake.aab
+            dist/${{ matrix.platform }}/build-metadata.json
+          if-no-files-found: error
+          retention-days: 14
+      - name: Upload signing logs
+        if: ${{ failure() }}
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: mobile-${{ matrix.platform }}-signing-logs
+          path: dist/${{ matrix.platform }}/*.log
+          retention-days: 14
   updates:
     needs: source
     if: ${{ inputs.mode == 'updates' || ((inputs.mode == 'native' || (inputs.mode == 'publish' && inputs.build_run_id == '')) && inputs.run-stage) }}
     runs-on: ubuntu-latest
-    environment: release
     timeout-minutes: 30
     steps:
       - name: Checkout snake-mobile
@@ -207,14 +282,12 @@ jobs:
         with:
           repository: ${{ env.SOURCE_REPOSITORY }}
           ref: ${{ needs.source.outputs.commit }}
-          token: ${{ github.token }}
           persist-credentials: false
       - name: Install dependencies
         uses: holepunchto/actions/node-base-extended@v1
         with:
           version: 24
           clean-install: true
-          node-auth-token: ${{ github.token }}
       - name: Set upgrade link
         env:
           UPGRADE_KEY: ${{ needs.source.outputs.upgrade-link }}
@@ -235,10 +308,11 @@ jobs:
             buildRunId: env.GITHUB_RUN_ID
           }' package.json > "$RUNNER_TEMP/source.json"
       - name: Build mobile updates
+        uses: holepunchto/actions/run-npm-script@v1
         env:
-          CI: 'true'
           npm_config_ignore_scripts: 'true'
-        run: sfw npm run update
+        with:
+          script: update
       - name: Package stage artifact
         run: tar -czf "$RUNNER_TEMP/stage.tar.gz" -C dist .
       - name: Upload stage artifact
@@ -251,10 +325,9 @@ jobs:
           if-no-files-found: error
   stage:
     needs:
-      - source
       - updates
-      - build
-    if: ${{ always() && !cancelled() && inputs.run-stage && needs.updates.result == 'success' && (inputs.mode == 'updates' || needs.build.result == 'success') }}
+      - sign
+    if: ${{ always() && !cancelled() && inputs.run-stage && needs.updates.result == 'success' && (inputs.mode == 'updates' || needs.sign.result == 'success') }}
     permissions:
       contents: write
       pull-requests: write
@@ -268,20 +341,25 @@ jobs:
     steps:
       - name: Checkout CI repository
         uses: actions/checkout@v4
-      - name: Set up Node.js
-        uses: holepunchto/actions/setup-node@v1
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - name: Install CI tools
+        uses: holepunchto/actions/node-base-extended@v1
         with:
           version: 24
-      - uses: holepunchto/actions/setup-socket@v1
+          clean-install: true
       - name: Download mobile updates
         uses: actions/download-artifact@v4
         with:
           name: snake-mobile-stage
           path: out/artifacts
       - name: Extract mobile updates
-        run: |
-          mkdir -p out/stage
-          tar -xzf out/artifacts/stage.tar.gz -C out/stage
+        run: node scripts/safe-extract.js out/artifacts/stage.tar.gz out/stage
+      - name: Authenticate snapshot updates
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh auth setup-git
       - name: Stage with pear-ci
         uses: holepunchto/actions/pear-ci@v1
         with:
@@ -293,12 +371,12 @@ jobs:
     name: Publish ${{ matrix.platform }}
     needs:
       - source
-      - build
+      - sign
     if: |-
       ${{ always() && !cancelled() && needs.source.result == 'success'
         && ((inputs.mode == 'publish' && inputs.build_run_id != '')
           || ((inputs.mode == 'publish' || (inputs.mode == 'native' && inputs.publish))
-            && needs.build.result == 'success')) }}
+            && needs.sign.result == 'success')) }}
     strategy:
       fail-fast: false
       matrix:
@@ -348,14 +426,8 @@ jobs:
         run: rm -rf "$RUNNER_TEMP/appstore-connect"
       - name: Read built application ID
         id: metadata
-        env:
-          GOOGLE_SERVICE_ACCOUNT_JSON: ${{ secrets.GOOGLE_SERVICE_ACCOUNT_JSON }}
         run: |
           set -euo pipefail
-          if [ -z "$GOOGLE_SERVICE_ACCOUNT_JSON" ]; then
-            echo "Missing secret: GOOGLE_SERVICE_ACCOUNT_JSON"
-            exit 1
-          fi
           test -s "$RUNNER_TEMP/android/Snake.aab"
           package_name="$(jq -er '
             select(.platform == "android") |

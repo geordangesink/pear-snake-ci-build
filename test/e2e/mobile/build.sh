@@ -12,33 +12,16 @@ git rev-parse HEAD > "$results/source-commit.txt"
 if [[ "$platform" == ios ]]; then
   sfw npm run bundle:bare
 else
-  sfw npx --no-install bare-pack --host android-x64 --linked --out ./src/worker.bundle.js ./workers/main.js
+  sfw npm run bundle:bare -- --host android-x64
 fi
-sfw npx --no-install expo prebuild --platform "$platform" --no-install
+sfw npm run prebuild -- --platform "$platform" --no-install
 
 if [[ "$platform" == ios ]]; then
   pod install --project-directory=ios
-  export RESULTS_DIRECTORY="$results"
-  node <<'NODE'
-const fs = require('node:fs')
-const path = require('node:path')
-const xcode = require('xcode')
-const unquote = value => String(value || '').replace(/^"|"$/g, '')
-const projects = fs.readdirSync('ios').filter(name => name.endsWith('.xcodeproj'))
-if (projects.length !== 1) throw new Error('Expected one generated iOS application project')
-const project = xcode.project(path.join('ios', projects[0], 'project.pbxproj'))
-project.parseSync()
-const targets = Object.values(project.pbxNativeTargetSection()).filter(target =>
-  unquote(target.productType) === 'com.apple.product-type.application'
-)
-if (targets.length !== 1) throw new Error('Expected one iOS application target')
-const scheme = unquote(targets[0].name)
-const workspace = path.join('ios', projects[0].replace(/\.xcodeproj$/, '.xcworkspace'))
-if (!fs.existsSync(workspace)) throw new Error('Generated iOS workspace is missing')
-fs.writeFileSync(path.join(process.env.RESULTS_DIRECTORY, 'project.json'), JSON.stringify({ workspace, scheme }))
-NODE
-  workspace=$(node -p 'require(process.env.RESULTS_DIRECTORY + "/project.json").workspace')
-  scheme=$(node -p 'require(process.env.RESULTS_DIRECTORY + "/project.json").scheme')
+  workspaces=(ios/*.xcworkspace)
+  [[ ${#workspaces[@]} == 1 && -d "${workspaces[0]}" ]] || { echo 'Expected one iOS workspace'; exit 1; }
+  workspace="${workspaces[0]}"
+  scheme="$(basename "$workspace" .xcworkspace)"
   derived_data="$RUNNER_TEMP/snake-e2e-derived-data"
   xcodebuild -workspace "$workspace" -scheme "$scheme" \
     -configuration Release -sdk iphonesimulator \
@@ -51,7 +34,7 @@ NODE
 else
   (
     cd android
-    ./gradlew :app:assembleRelease -PreactNativeArchitectures=x86_64 --no-daemon --max-workers=2
+    gradle :app:assembleRelease -PreactNativeArchitectures=x86_64 --no-daemon --max-workers=2
   )
   app="$PWD/android/app/build/outputs/apk/release/app-release.apk"
   test -f "$app"

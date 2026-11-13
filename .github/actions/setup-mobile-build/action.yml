@@ -16,7 +16,6 @@ runs:
       with:
         version: 24
         clean-install: true
-        node-auth-token: ${{ github.token }}
     - name: Set upgrade link
       if: ${{ inputs.upgrade-key != '' }}
       shell: bash
@@ -27,12 +26,14 @@ runs:
       shell: bash
       env:
         BUILD_PLATFORM: ${{ inputs.platform }}
-      run: node scripts/prepare-build.js
+        ACTION_PATH: ${{ github.action_path }}
+      run: node "$ACTION_PATH/../../../scripts/mobile/prepare-build.js"
     - name: Bundle Bare worker
-      shell: bash
-      run: sfw npm run bundle:bare
+      uses: holepunchto/actions/run-npm-script@v1
+      with:
+        script: bundle:bare
     - name: Generate native project
       shell: bash
       env:
         BUILD_PLATFORM: ${{ inputs.platform }}
-      run: sfw npx --no-install expo prebuild --platform "$BUILD_PLATFORM" --no-install
+      run: sfw npm run prebuild -- --platform "$BUILD_PLATFORM" --no-install
