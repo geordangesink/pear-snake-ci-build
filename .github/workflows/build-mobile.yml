@@ -33,9 +33,6 @@ on:
           - dev
           - stage
           - production
-      upgrade-key:
-        description: Optional package.json upgrade override
-        type: string
       run-stage:
         type: boolean
         default: false
@@ -72,7 +69,6 @@ jobs:
     timeout-minutes: 5
     outputs:
       commit: ${{ steps.source.outputs.commit }}
-      upgrade-link: ${{ steps.source.outputs.upgrade-link }}
       platforms: ${{ steps.platforms.outputs.platforms }}
     steps:
       - name: Validate build options
@@ -116,7 +112,6 @@ jobs:
         with:
           repository: ${{ env.SOURCE_REPOSITORY }}
           ref: ${{ inputs.ref }}
-          upgrade-key: ${{ inputs.upgrade-key }}
   build:
     name: Compile ${{ matrix.platform }}
     needs: source
@@ -154,7 +149,6 @@ jobs:
       - uses: ./ci/.github/actions/setup-mobile-build
         with:
           platform: ${{ matrix.platform }}
-          upgrade-key: ${{ needs.source.outputs.upgrade-link }}
       - name: Install Pods
         working-directory: ios
         run: pod install
@@ -288,10 +282,6 @@ jobs:
         with:
           version: 24
           clean-install: true
-      - name: Set upgrade link
-        env:
-          UPGRADE_KEY: ${{ needs.source.outputs.upgrade-link }}
-        run: npm pkg set "upgrade=$UPGRADE_KEY"
       - name: Record source
         env:
           SOURCE_COMMIT: ${{ needs.source.outputs.commit }}

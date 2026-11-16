@@ -35,7 +35,7 @@ Both apps share a primary key and snapshot:
 
 Primary keys are 64-character hex Corestore identities. `channel` is `dev`, `stage`, or `production`. Optional `PEAR_DESKTOP_NAMESPACE` / `PEAR_MOBILE_NAMESPACE` variables replace the entire corresponding namespace.
 
-Create a shared primary key and choose each app's namespace before the first release. Keep both stable for subsequent updates. Builds require a valid `package.json` `upgrade` link or explicit `upgrade-key` override. Packages and update bundles use that same link.
+Create a shared primary key and choose each app's namespace before the first release. Keep both stable for subsequent updates. Builds require a valid `upgrade` link in the app's `package.json`. Packages and update bundles use that same link.
 
 Enable `run-stage` to stage after every selected build succeeds. Mobile `updates` mode can stage independently; its `snake-mobile-stage` artifact contains `stage.tar.gz` and source metadata in `source.json`. `stage-dry-run` previews changes without publishing or updating a snapshot.
 

@@ -12,10 +12,6 @@ on:
           - dev
           - stage
           - production
-      upgrade-key:
-        description: Value for package.json upgrade field
-        type: string
-        default: ''
       run-linux-arm:
         type: boolean
         default: false
@@ -46,7 +42,6 @@ jobs:
     timeout-minutes: 5
     outputs:
       sha: ${{ steps.source.outputs.commit }}
-      upgrade-link: ${{ steps.source.outputs.upgrade-link }}
       linux: ${{ steps.matrix.outputs.linux }}
       macos: ${{ steps.matrix.outputs.macos }}
     steps:
@@ -57,7 +52,6 @@ jobs:
         with:
           repository: holepunchto/snake
           ref: ${{ inputs.ref }}
-          upgrade-key: ${{ inputs.upgrade-key }}
       - name: Select build platforms
         id: matrix
         env:
@@ -103,8 +97,6 @@ jobs:
         uses: holepunchto/actions/run-npm-script@v1
         with:
           script: build:release
-        env:
-          UPGRADE_KEY: ${{ needs.prepare.outputs.upgrade-link }}
       - name: Upload AppImage
         uses: actions/upload-artifact@v4
         with:
@@ -138,8 +130,6 @@ jobs:
         uses: holepunchto/actions/run-npm-script@v1
         with:
           script: build:release
-        env:
-          UPGRADE_KEY: ${{ needs.prepare.outputs.upgrade-link }}
       - name: Upload unsigned app
         uses: actions/upload-artifact@v4
         with:
@@ -231,8 +221,6 @@ jobs:
         uses: holepunchto/actions/run-npm-script@v1
         with:
           script: build:release
-        env:
-          UPGRADE_KEY: ${{ needs.prepare.outputs.upgrade-link }}
       - name: Upload unsigned MSIX
         uses: actions/upload-artifact@v4
         with:
@@ -319,8 +307,6 @@ jobs:
           pattern: snake-*
           path: out/artifacts
       - name: Build stage artifact
-        env:
-          UPGRADE_KEY: ${{ needs.prepare.outputs.upgrade-link }}
         run: |
           node scripts/build-stage-artifact.js
           tar -czf "$RUNNER_TEMP/stage.tar.gz" -C out/snake-stage .

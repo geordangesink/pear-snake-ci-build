@@ -12,7 +12,6 @@ if (fs.existsSync(output) || fs.existsSync(inputs)) {
   throw new Error('Stage output already exists; use a fresh output directory')
 }
 fs.mkdirSync(inputs, { recursive: true })
-if (process.env.UPGRADE_KEY) pkg.upgrade = process.env.UPGRADE_KEY
 const metadata = path.join(inputs, 'package.json')
 fs.writeFileSync(metadata, JSON.stringify(pkg, null, 2) + '\n')
 args.push('--package', metadata)
