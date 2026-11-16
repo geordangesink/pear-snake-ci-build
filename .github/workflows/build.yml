@@ -94,14 +94,17 @@ jobs:
           allow-git: all
       - uses: holepunchto/actions/setup-bare@v1
       - name: Compile app
-        uses: holepunchto/actions/run-npm-script@v1
+        uses: holepunchto/actions/make-pear-app@v1
         with:
-          script: build:release
+          script: make:linux:appimage
+          channel: ${{ inputs.channel }}
+      - name: Set AppImage filename
+        run: mv out/make/*.AppImage out/make/Snake.AppImage
       - name: Upload AppImage
         uses: actions/upload-artifact@v4
         with:
           name: snake-linux-${{ matrix.arch }}-appimage
-          path: out/desktop/Snake.AppImage
+          path: out/make/Snake.AppImage
           if-no-files-found: error
   build-macos:
     name: Compile macOS / ${{ matrix.arch }}
@@ -127,14 +130,19 @@ jobs:
           allow-git: all
       - uses: holepunchto/actions/setup-bare@v1
       - name: Compile app
-        uses: holepunchto/actions/run-npm-script@v1
+        uses: holepunchto/actions/make-pear-app@v1
         with:
-          script: build:release
+          script: package
+          channel: ${{ inputs.channel }}
+      - name: Package unsigned app
+        run: |
+          ditto -c -k --sequesterRsrc --keepParent \
+            out/Snake-darwin-${{ matrix.arch }}/Snake.app "$RUNNER_TEMP/payload.zip"
       - name: Upload unsigned app
         uses: actions/upload-artifact@v4
         with:
           name: unsigned-snake-darwin-${{ matrix.arch }}
-          path: out/desktop/payload.zip
+          path: ${{ runner.temp }}/payload.zip
           if-no-files-found: error
           retention-days: 1
   sign-macos:
@@ -218,14 +226,15 @@ jobs:
           allow-git: all
       - uses: holepunchto/actions/setup-bare@v1
       - name: Compile app
-        uses: holepunchto/actions/run-npm-script@v1
+        uses: holepunchto/actions/make-pear-app@v1
         with:
-          script: build:release
+          script: make:win32
+          channel: ${{ inputs.channel }}
       - name: Upload unsigned MSIX
         uses: actions/upload-artifact@v4
         with:
           name: unsigned-snake-win32-x64
-          path: out/desktop/Snake.msix
+          path: out/make/msix/x64/Snake.msix
           if-no-files-found: error
           retention-days: 1
   sign-win32-x64:
