@@ -22,7 +22,7 @@ See [releasing mobile](RELEASING.md) for the `native`, `updates`, and `publish` 
 
 Keep secrets only in this repository's protected `release` environment. Remove repository-level duplicates and exclude this repository from organization-level copies of those credentials. Optional variables can be set at repository or environment scope. Source repositories must be public.
 
-App scripts and configuration run on hosted build and test runners without release credentials. Desktop compilation uses `holepunchto/actions/make-pear-app` with the app's Forge commands and no signing inputs. Signing, staging, and publishing run separately using CI-owned scripts and trusted tools; they consume the built artifacts without executing app code. `windows-signer` is reserved for signing.
+App scripts and configuration run on hosted build and test runners without release credentials. Desktop compilation uses `holepunchto/actions/make-pear-app` with the app's Forge commands and no signing inputs. The temporary [desktop build workflow](.github/workflows/DELETE_ME-temp-desktop-build.yml) coordinates macOS and Windows build and signing jobs in this repository. Signing, staging, and publishing run separately using CI-owned scripts and trusted tools; they consume the built artifacts without executing app code. `windows-signer` is reserved for signing.
 
 ### Pear staging
 

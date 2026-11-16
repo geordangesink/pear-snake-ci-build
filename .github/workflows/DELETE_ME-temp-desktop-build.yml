@@ -1,0 +1,172 @@
+name: DELETE_ME-temp-desktop-build
+
+on:
+  workflow_call:
+    inputs:
+      source-repository:
+        type: string
+        required: true
+      source-ref:
+        type: string
+        required: true
+      build-runner:
+        description: Hosted runner without signing credentials
+        type: string
+        required: true
+      sign-runner:
+        description: Signing runner; defaults to the build runner label in a separate job
+        type: string
+        default: ''
+      script:
+        type: string
+        required: true
+      channel:
+        type: string
+        required: true
+      unsigned-path:
+        description: Built macOS app directory or Windows MSIX file
+        type: string
+        required: true
+      artifact-name:
+        description: Prefix for unsigned and signed artifacts
+        type: string
+        required: true
+      sign-script:
+        description: Signing script in the caller CI repository
+        type: string
+        required: true
+      environment:
+        type: string
+        default: release
+    secrets:
+      MACOS_CERTIFICATE_BASE64:
+        required: false
+      MACOS_P12_PASSWORD:
+        required: false
+      MACOS_CODESIGN_IDENTITY:
+        required: false
+      APPLE_API_PRIVATE_KEY_BASE64:
+        required: false
+      APPLE_API_KEY_ID:
+        required: false
+      APPLE_API_ISSUER_ID:
+        required: false
+      WINDOWS_CERT_SHA1:
+        required: false
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Compile
+    runs-on: ${{ inputs.build-runner }}
+    timeout-minutes: 60
+    steps:
+      - name: Checkout app source
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ inputs.source-repository }}
+          ref: ${{ inputs.source-ref }}
+          persist-credentials: false
+      - uses: holepunchto/actions/node-base-extended@v1
+        with:
+          version: 24
+          clean-install: true
+          allow-git: all
+      - uses: holepunchto/actions/setup-bare@v1
+      - name: Compile app
+        uses: holepunchto/actions/make-pear-app@v1
+        with:
+          script: ${{ inputs.script }}
+          channel: ${{ inputs.channel }}
+      - name: Package unsigned macOS app
+        if: ${{ runner.os == 'macOS' }}
+        shell: bash
+        env:
+          APP_PATH: ${{ inputs.unsigned-path }}
+        run: ditto -c -k --sequesterRsrc --keepParent "$APP_PATH" "$RUNNER_TEMP/payload.zip"
+      - name: Upload unsigned build
+        uses: actions/upload-artifact@v4
+        with:
+          name: unsigned-${{ inputs.artifact-name }}
+          path: ${{ runner.os == 'macOS' && format('{0}/payload.zip', runner.temp) || inputs.unsigned-path }}
+          if-no-files-found: error
+          retention-days: 1
+
+  sign:
+    name: Sign
+    needs: build
+    runs-on: ${{ inputs.sign-runner || inputs.build-runner }}
+    environment: ${{ inputs.environment }}
+    timeout-minutes: 45
+    steps:
+      - name: Checkout CI scripts
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ github.repository }}
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - name: Install CI tools
+        uses: holepunchto/actions/node-base-extended@v1
+        with:
+          version: 24
+          clean-install: true
+      - name: Download unsigned build
+        uses: actions/download-artifact@v4
+        with:
+          name: unsigned-${{ inputs.artifact-name }}
+          path: out/unsigned
+      - name: Set up macOS signing credentials
+        if: ${{ runner.os == 'macOS' }}
+        id: certificates
+        uses: holepunchto/actions/setup-certificates/macos@v1
+        with:
+          development_certificate_base64: ${{ secrets.MACOS_CERTIFICATE_BASE64 }}
+          development_password: ${{ secrets.MACOS_P12_PASSWORD }}
+          notarization_method: appstore_connect
+          api_key_base64: ${{ secrets.APPLE_API_PRIVATE_KEY_BASE64 }}
+          api_key_id: ${{ secrets.APPLE_API_KEY_ID }}
+          api_issuer: ${{ secrets.APPLE_API_ISSUER_ID }}
+      - name: Sign and notarize macOS app
+        if: ${{ runner.os == 'macOS' }}
+        shell: bash
+        env:
+          SIGN_SCRIPT: ${{ inputs.sign-script }}
+          MACOS_CODESIGN_IDENTITY: ${{ secrets.MACOS_CODESIGN_IDENTITY }}
+          KEYCHAIN_PROFILE: ${{ steps.certificates.outputs.keychain-profile }}
+        run: bash "$SIGN_SCRIPT"
+      - name: Remove macOS signing credentials
+        if: ${{ always() && runner.os == 'macOS' }}
+        shell: bash
+        run: |
+          security delete-keychain "$RUNNER_TEMP/app-signing.keychain-db" >/dev/null 2>&1 || true
+          rm -f "$RUNNER_TEMP/development_certificate.p12" "$RUNNER_TEMP/AuthKey.p8"
+      - name: Sign and verify Windows MSIX
+        if: ${{ runner.os == 'Windows' }}
+        shell: pwsh
+        env:
+          SIGN_SCRIPT: ${{ inputs.sign-script }}
+          WINDOWS_CERT_SHA1: ${{ secrets.WINDOWS_CERT_SHA1 }}
+        run: '& $env:SIGN_SCRIPT'
+      - name: Upload signed macOS app
+        if: ${{ runner.os == 'macOS' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ inputs.artifact-name }}-app.zip
+          path: out/signed/*-app.zip
+          if-no-files-found: error
+      - name: Upload signed DMG
+        if: ${{ runner.os == 'macOS' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ inputs.artifact-name }}-dmg
+          path: out/signed/*.dmg
+          if-no-files-found: error
+      - name: Upload signed MSIX
+        if: ${{ runner.os == 'Windows' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ inputs.artifact-name }}-msix
+          path: out/signed/*.msix
+          if-no-files-found: error
