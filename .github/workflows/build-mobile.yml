@@ -406,10 +406,18 @@ jobs:
           mkdir -p "$RUNNER_TEMP/appstore-connect/private_keys"
           cd "$RUNNER_TEMP/appstore-connect"
           printf '%s' "$APPLE_API_PRIVATE_KEY_BASE64" | base64 --decode > "private_keys/AuthKey_${APPLE_API_KEY_ID}.p8"
-          xcrun altool --validate-app -f "$RUNNER_TEMP/ios/Snake.ipa" -t ios \
-            --apiKey "$APPLE_API_KEY_ID" --apiIssuer "$APPLE_API_ISSUER_ID"
-          xcrun altool --upload-app -f "$RUNNER_TEMP/ios/Snake.ipa" -t ios \
-            --apiKey "$APPLE_API_KEY_ID" --apiIssuer "$APPLE_API_ISSUER_ID"
+          for operation in validate upload; do
+            success=VERIFY
+            if [[ "$operation" == upload ]]; then success=UPLOAD; fi
+            xcrun altool "--${operation}-app" -f "$RUNNER_TEMP/ios/Snake.ipa" -t ios \
+              --apiKey "$APPLE_API_KEY_ID" --apiIssuer "$APPLE_API_ISSUER_ID" \
+              2>&1 | tee "$operation.log"
+            if grep -Eq '(^|[[:space:]])ERROR:' "$operation.log" || \
+              ! grep -Fxq "$success SUCCEEDED with no errors" "$operation.log"; then
+              echo "::error::App Store Connect $operation did not succeed. See altool output above."
+              exit 1
+            fi
+          done
         if: ${{ matrix.platform == 'ios' }}
       - name: Remove App Store Connect private key
         if: ${{ always() && matrix.platform == 'ios' }}

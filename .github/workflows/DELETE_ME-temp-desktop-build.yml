@@ -76,10 +76,20 @@ jobs:
           allow-git: all
       - uses: holepunchto/actions/setup-bare@v1
       - name: Compile app
+        if: ${{ runner.os != 'macOS' }}
         uses: holepunchto/actions/make-pear-app@v1
         with:
           script: ${{ inputs.script }}
           channel: ${{ inputs.channel }}
+      - name: Compile macOS app
+        if: ${{ runner.os == 'macOS' }}
+        uses: holepunchto/actions/run-npm-script@v1
+        with:
+          script: ${{ inputs.script }}
+        env:
+          NODE_AUTH_TOKEN: ${{ github.token }}
+          CHANNEL: ${{ inputs.channel }}
+          NODE_ENV: production
       - name: Package unsigned macOS app
         if: ${{ runner.os == 'macOS' }}
         shell: bash
