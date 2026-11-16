@@ -50,7 +50,7 @@ jobs:
         id: source
         uses: ./.github/actions/resolve-source
         with:
-          repository: holepunchto/snake
+          repository: geordangesink/snake
           ref: ${{ inputs.ref }}
       - name: Select build platforms
         id: matrix
@@ -84,7 +84,7 @@ jobs:
       - name: Checkout Snake
         uses: actions/checkout@v4
         with:
-          repository: holepunchto/snake
+          repository: geordangesink/snake
           ref: ${{ needs.prepare.outputs.sha }}
           persist-credentials: false
       - uses: holepunchto/actions/node-base-extended@v1
@@ -120,7 +120,7 @@ jobs:
       - name: Checkout Snake
         uses: actions/checkout@v4
         with:
-          repository: holepunchto/snake
+          repository: geordangesink/snake
           ref: ${{ needs.prepare.outputs.sha }}
           persist-credentials: false
       - uses: holepunchto/actions/node-base-extended@v1
@@ -216,7 +216,7 @@ jobs:
       - name: Checkout Snake
         uses: actions/checkout@v4
         with:
-          repository: holepunchto/snake
+          repository: geordangesink/snake
           ref: ${{ needs.prepare.outputs.sha }}
           persist-credentials: false
       - uses: holepunchto/actions/node-base-extended@v1
@@ -301,7 +301,7 @@ jobs:
       - name: Checkout snake source
         uses: actions/checkout@v4
         with:
-          repository: holepunchto/snake
+          repository: geordangesink/snake
           ref: ${{ needs.prepare.outputs.sha }}
           path: snake-source
           persist-credentials: false

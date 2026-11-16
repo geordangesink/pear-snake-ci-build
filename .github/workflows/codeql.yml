@@ -29,9 +29,9 @@ jobs:
       matrix:
         include:
           - app: desktop
-            repository: holepunchto/snake
+            repository: geordangesink/snake
           - app: mobile
-            repository: holepunchto/snake-mobile
+            repository: geordangesink/snake-mobile
     steps:
       - name: Checkout source
         uses: actions/checkout@v4

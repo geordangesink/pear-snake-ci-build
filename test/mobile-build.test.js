@@ -30,7 +30,7 @@ function fixture(t, platform = 'android') {
     GITHUB_RUN_NUMBER: '42',
     GITHUB_RUN_ATTEMPT: '2',
     GITHUB_ENV: path.join(directory, 'env'),
-    SOURCE_REPOSITORY: 'holepunchto/snake-mobile',
+    SOURCE_REPOSITORY: 'geordangesink/snake-mobile',
     SOURCE_REF: 'main',
     SOURCE_COMMIT: 'a'.repeat(40),
     GITHUB_REPOSITORY: 'holepunchto/pear-snake-ci-build',
