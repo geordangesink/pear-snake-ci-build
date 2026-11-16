@@ -60,7 +60,7 @@ defaults:
     shell: bash
 env:
   CI: 'true'
-  SOURCE_REPOSITORY: holepunchto/snake-mobile
+  SOURCE_REPOSITORY: geordangesink/snake-mobile
   SOURCE_REF: ${{ inputs.ref }}
 jobs:
   source:
