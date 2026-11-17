@@ -107,7 +107,7 @@ jobs:
           path: out/make/Snake.AppImage
           if-no-files-found: error
   build-macos:
-    name: Compile macOS / ${{ matrix.arch }}
+    name: macOS / ${{ matrix.arch }}
     needs: prepare
     if: ${{ inputs.run-macos || inputs.run-macos-intel }}
     strategy:
@@ -115,6 +115,7 @@ jobs:
       matrix:
         include: ${{ fromJSON(needs.prepare.outputs.macos) }}
     runs-on: ${{ matrix.runner }}
+    environment: release
     timeout-minutes: 60
     steps:
       - name: Checkout Snake
@@ -123,94 +124,55 @@ jobs:
           repository: geordangesink/snake
           ref: ${{ needs.prepare.outputs.sha }}
           persist-credentials: false
+      - name: Checkout CI signing configuration
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          path: ci
+          persist-credentials: false
+      - name: Prepare signing files
+        env:
+          MACOS_CODESIGN_IDENTITY: ${{ secrets.MACOS_CODESIGN_IDENTITY }}
+        run: |
+          [[ -n "$MACOS_CODESIGN_IDENTITY" ]] || { echo '::error::Missing MACOS_CODESIGN_IDENTITY.'; exit 1; }
+          mv ci "$RUNNER_TEMP/snake-ci"
       - uses: holepunchto/actions/node-base-extended@v1
         with:
           version: 24
           clean-install: true
           allow-git: all
+      - name: Build native DMG dependencies
+        run: sfw npm rebuild macos-alias fs-xattr --ignore-scripts=false --foreground-scripts
       - uses: holepunchto/actions/setup-bare@v1
-      - name: Compile app
+      - name: Build and sign macOS app
         uses: geordangesink/actions/make-pear-app@optional-sign
-        with:
-          script: package
-          channel: ${{ inputs.channel }}
-      - name: Package unsigned app
-        run: |
-          ditto -c -k --sequesterRsrc --keepParent \
-            out/Snake-darwin-${{ matrix.arch }}/Snake.app "$RUNNER_TEMP/payload.zip"
-      - name: Upload unsigned app
-        uses: actions/upload-artifact@v4
-        with:
-          name: unsigned-snake-darwin-${{ matrix.arch }}
-          path: ${{ runner.temp }}/payload.zip
-          if-no-files-found: error
-          retention-days: 1
-  sign-macos:
-    name: Sign macOS / ${{ matrix.arch }}
-    needs:
-      - prepare
-      - build-macos
-    if: ${{ inputs.run-macos || inputs.run-macos-intel }}
-    strategy:
-      fail-fast: false
-      matrix:
-        include: ${{ fromJSON(needs.prepare.outputs.macos) }}
-    runs-on: ${{ matrix.runner }}
-    environment: release
-    timeout-minutes: 45
-    steps:
-      - name: Checkout CI scripts
-        uses: actions/checkout@v4
-        with:
-          ref: ${{ github.sha }}
-          persist-credentials: false
-      - name: Install CI tools
-        uses: holepunchto/actions/node-base-extended@v1
-        with:
-          version: 24
-          clean-install: true
-      - name: Download unsigned app
-        uses: actions/download-artifact@v4
-        with:
-          name: unsigned-snake-darwin-${{ matrix.arch }}
-          path: out/unsigned
-      - name: Set up signing credentials
-        id: certificates
-        uses: holepunchto/actions/setup-certificates/macos@v1
-        with:
-          development_certificate_base64: ${{ secrets.MACOS_CERTIFICATE_BASE64 }}
-          development_password: ${{ secrets.MACOS_P12_PASSWORD }}
-          notarization_method: appstore_connect
-          api_key_base64: ${{ secrets.APPLE_API_PRIVATE_KEY_BASE64 }}
-          api_key_id: ${{ secrets.APPLE_API_KEY_ID }}
-          api_issuer: ${{ secrets.APPLE_API_ISSUER_ID }}
-      - name: Sign and notarize
         env:
-          MACOS_CODESIGN_IDENTITY: ${{ secrets.MACOS_CODESIGN_IDENTITY }}
-          KEYCHAIN_PROFILE: ${{ steps.certificates.outputs.keychain-profile }}
-        run: bash scripts/desktop/sign-macos.sh
+          MACOS_ENTITLEMENTS: ${{ runner.temp }}/snake-ci/scripts/desktop/entitlements.plist
+          KEYCHAIN_PATH: ${{ runner.temp }}/app-signing.keychain-db
+        with:
+          script: make:darwin
+          channel: ${{ inputs.channel }}
+          macos_development_certificate_base64: ${{ secrets.MACOS_CERTIFICATE_BASE64 }}
+          macos_development_password: ${{ secrets.MACOS_P12_PASSWORD }}
+          macos_codesign_identity: ${{ secrets.MACOS_CODESIGN_IDENTITY }}
+          macos_notarization_method: appstore_connect
+          macos_api_key_base64: ${{ secrets.APPLE_API_PRIVATE_KEY_BASE64 }}
+          macos_api_key_id: ${{ secrets.APPLE_API_KEY_ID }}
+          macos_api_issuer: ${{ secrets.APPLE_API_ISSUER_ID }}
+          macos_dmg: '*.dmg'
+          macos_dmg_artifact_name: snake-darwin-${{ matrix.arch }}-dmg
+          macos_app: snake-darwin-${{ matrix.arch }}-app.zip
       - name: Remove signing credentials
         if: ${{ always() }}
         run: |
           security delete-keychain "$RUNNER_TEMP/app-signing.keychain-db" >/dev/null 2>&1 || true
           rm -f "$RUNNER_TEMP/development_certificate.p12" "$RUNNER_TEMP/AuthKey.p8"
-      - name: Upload signed app
-        uses: actions/upload-artifact@v4
-        with:
-          name: snake-darwin-${{ matrix.arch }}-app.zip
-          path: out/signed/Snake-app.zip
-          if-no-files-found: error
-      - name: Upload signed DMG
-        uses: actions/upload-artifact@v4
-        with:
-          name: snake-darwin-${{ matrix.arch }}-dmg
-          path: out/signed/Snake.dmg
-          if-no-files-found: error
   build-win32-x64:
-    name: Compile Windows / x64
+    name: Windows / x64
     needs: prepare
     if: ${{ inputs.run-windows-x64 }}
-    runs-on: windows-2025
+    runs-on: windows-signer
+    environment: release
     timeout-minutes: 30
     steps:
       - name: Checkout Snake
@@ -219,69 +181,51 @@ jobs:
           repository: geordangesink/snake
           ref: ${{ needs.prepare.outputs.sha }}
           persist-credentials: false
+      - name: Checkout CI signing configuration
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          path: ci
+          persist-credentials: false
+      - name: Prepare signing files
+        shell: bash
+        run: mv ci "$RUNNER_TEMP/snake-ci"
       - uses: holepunchto/actions/node-base-extended@v1
         with:
           version: 24
           clean-install: true
           allow-git: all
       - uses: holepunchto/actions/setup-bare@v1
-      - name: Compile app
+      - name: Set Windows publisher
+        shell: pwsh
+        env:
+          WINDOWS_CERT_SHA1: ${{ secrets.WINDOWS_CERT_SHA1 }}
+        run: '& "$env:RUNNER_TEMP/snake-ci/scripts/desktop/prepare-windows.ps1"'
+      - name: Build and sign Windows app
         uses: geordangesink/actions/make-pear-app@optional-sign
         with:
           script: make:win32
           channel: ${{ inputs.channel }}
-      - name: Upload unsigned MSIX
-        uses: actions/upload-artifact@v4
-        with:
-          name: unsigned-snake-win32-x64
-          path: out/make/msix/x64/Snake.msix
-          if-no-files-found: error
-          retention-days: 1
-  sign-win32-x64:
-    name: Sign Windows / x64
-    needs: build-win32-x64
-    runs-on: windows-signer
-    environment: release
-    timeout-minutes: 15
-    steps:
-      - name: Checkout CI scripts
-        uses: actions/checkout@v4
-        with:
-          ref: ${{ github.sha }}
-          persist-credentials: false
-      - name: Install CI tools
-        uses: holepunchto/actions/node-base-extended@v1
-        with:
-          version: 24
-          clean-install: true
-      - name: Download unsigned MSIX
-        uses: actions/download-artifact@v4
-        with:
-          name: unsigned-snake-win32-x64
-          path: out/unsigned
-      - name: Sign and verify MSIX
-        shell: pwsh
-        env:
-          WINDOWS_CERT_SHA1: ${{ secrets.WINDOWS_CERT_SHA1 }}
-        run: ./scripts/desktop/sign-windows.ps1
+          windows_signing_method: cert_sha1
+          windows_cert_sha1: ${{ secrets.WINDOWS_CERT_SHA1 }}
       - name: Upload signed MSIX
         uses: actions/upload-artifact@v4
         with:
           name: snake-win32-x64-msix
-          path: out/signed/Snake.msix
+          path: out/make/msix/x64/Snake.msix
           if-no-files-found: error
   stage:
     needs:
       - prepare
       - build-linux
-      - sign-macos
-      - sign-win32-x64
+      - build-macos
+      - build-win32-x64
     if: |-
       ${{ always() && !cancelled() && inputs.run-stage
         && needs.prepare.result == 'success'
         && (!(inputs.run-linux-x64 || inputs.run-linux-arm) || needs.build-linux.result == 'success')
-        && (!(inputs.run-macos || inputs.run-macos-intel) || needs.sign-macos.result == 'success')
-        && (!inputs.run-windows-x64 || needs.sign-win32-x64.result == 'success') }}
+        && (!(inputs.run-macos || inputs.run-macos-intel) || needs.build-macos.result == 'success')
+        && (!inputs.run-windows-x64 || needs.build-win32-x64.result == 'success') }}
     permissions:
       contents: write
       pull-requests: write

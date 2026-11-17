@@ -6,7 +6,7 @@ const extract = require('./safe-extract')
 async function extractApp(directory, platform = process.platform) {
   const layout = {
     linux: ['Snake.AppImage', 'squashfs-root/Snake'],
-    darwin: ['Snake-app.zip', 'Snake.app/Contents/MacOS/Snake'],
+    darwin: [`snake-darwin-${process.arch}-app.zip`, 'Snake.app/Contents/MacOS/Snake'],
     win32: ['Snake.msix', 'app/Snake.exe']
   }[platform]
   if (!layout) throw new Error(`Unsupported platform: ${platform}`)
