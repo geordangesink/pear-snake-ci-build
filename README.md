@@ -16,13 +16,13 @@ Start builds from **Actions**. Builds and checks use `geordangesink/snake` and `
 
 Desktop supports Linux and macOS x64/arm64, plus Windows x64. Select the platforms to build; all default to off. Windows signing requires a dedicated `windows-signer` runner.
 
-See [releasing mobile](RELEASING.md) for the `native`, `updates`, and `publish` modes, credentials, and automatic build numbering. Mobile app identifiers come from `app.json`. Artifacts are retained for 14 days.
+See [releasing mobile](RELEASING.md) for the `native`, `updates`, and `publish` modes, credentials, and automatic build numbering. Mobile app identifiers come from `app.json`. Unsigned build artifacts are retained for 1 day; signed mobile artifacts and reports for 14 days. Desktop release and staging artifacts use the repository retention setting.
 
 ## Repository setup
 
 Keep secrets only in this repository's protected `release` environment. Remove repository-level duplicates and exclude this repository from organization-level copies of those credentials. Optional variables can be set at repository or environment scope. Source repositories must be public.
 
-Desktop builds use `geordangesink/actions/make-pear-app@optional-sign` to build and sign on the same runner, with credentials from the `release` environment. The action uses Snake's own Forge configuration; CI supplies its entitlements and keychain paths. Desktop app build scripts can access those signing credentials. Windows builds and signs on `windows-signer`. Mobile builds run without release credentials; mobile signing and publishing run separately using CI-owned scripts and trusted tools. Staging consumes built artifacts without executing app code.
+App scripts and configuration run on hosted build and test runners without release credentials. Desktop compilation uses `geordangesink/actions/make-pear-app@optional-sign` with the app's Forge commands, `signed: false` on macOS and Windows, and no signing inputs. Signing, staging, and publishing run separately using CI-owned scripts and trusted tools; they consume the built artifacts without executing app code. `windows-signer` is reserved for signing.
 
 ### Pear staging
 
@@ -46,7 +46,7 @@ Snapshot writes use the automatic `GITHUB_TOKEN` with Contents write and Pull re
 ## Checks
 
 - **CodeQL** runs weekly or manually. Download SARIF reports and source metadata from its artifacts; findings are not uploaded to the source repositories' Security tabs.
-- **Desktop E2E** runs after successful desktop builds on `main`, or manually with a completed build's `run-id`. It tests the extracted app's create, steer, join, and leave flow using real multiplayer connections; it does not test installer registration.
+- **Desktop E2E** runs after successful desktop builds on `main`, or manually with a completed build's `run-id` from this CI repository's `main` branch. It tests the extracted app's create, steer, join, and leave flow using real multiplayer connections; it does not test installer registration.
 - **Mobile E2E** runs manually against a selected ref. It builds simulator/emulator apps without release secrets and tests create, copy topic, leave, and join with Maestro. Both E2E workflows upload diagnostics.
 
 Validate workflows locally with:

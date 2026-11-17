@@ -20,8 +20,8 @@ let count = 0
 for (const [host, type, filename] of [
   ['linux-x64', 'appimage', 'Snake.AppImage'],
   ['linux-arm64', 'appimage', 'Snake.AppImage'],
-  ['darwin-arm64', 'app.zip', 'snake-darwin-arm64-app.zip'],
-  ['darwin-x64', 'app.zip', 'snake-darwin-x64-app.zip'],
+  ['darwin-arm64', 'app.zip', 'Snake-app.zip'],
+  ['darwin-x64', 'app.zip', 'Snake-app.zip'],
   ['win32-x64', 'msix', 'Snake.msix']
 ]) {
   const directory = path.join(artifacts, `snake-${host}-${type}`)
