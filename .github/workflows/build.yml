@@ -94,7 +94,7 @@ jobs:
           allow-git: all
       - uses: holepunchto/actions/setup-bare@v1
       - name: Compile app
-        uses: geordangesink/actions/make-pear-app@optional-sign
+        uses: holepunchto/actions/make-pear-app@v1
         with:
           script: make:linux:appimage
           channel: ${{ inputs.channel }}
@@ -130,7 +130,7 @@ jobs:
           allow-git: all
       - uses: holepunchto/actions/setup-bare@v1
       - name: Compile app
-        uses: geordangesink/actions/make-pear-app@optional-sign
+        uses: holepunchto/actions/make-pear-app@v1
         with:
           script: package
           channel: ${{ inputs.channel }}
@@ -148,6 +148,9 @@ jobs:
           retention-days: 1
   sign-macos:
     name: Sign macOS / ${{ matrix.arch }}
+    permissions:
+      contents: read
+      actions: write
     needs:
       - prepare
       - build-macos
@@ -207,6 +210,10 @@ jobs:
           name: snake-darwin-${{ matrix.arch }}-dmg
           path: out/signed/Snake.dmg
           if-no-files-found: error
+      - name: Delete unsigned app
+        uses: ./.github/actions/delete-unsigned-artifact
+        with:
+          name: unsigned-snake-darwin-${{ matrix.arch }}
   build-win32-x64:
     name: Compile Windows / x64
     needs: prepare
@@ -227,7 +234,7 @@ jobs:
           allow-git: all
       - uses: holepunchto/actions/setup-bare@v1
       - name: Compile app
-        uses: geordangesink/actions/make-pear-app@optional-sign
+        uses: holepunchto/actions/make-pear-app@v1
         with:
           script: make:win32
           channel: ${{ inputs.channel }}
@@ -241,6 +248,9 @@ jobs:
           retention-days: 1
   sign-win32-x64:
     name: Sign Windows / x64
+    permissions:
+      contents: read
+      actions: write
     needs: build-win32-x64
     runs-on: windows-signer
     environment: release
@@ -272,6 +282,10 @@ jobs:
           name: snake-win32-x64-msix
           path: out/signed/Snake.msix
           if-no-files-found: error
+      - name: Delete unsigned MSIX
+        uses: ./.github/actions/delete-unsigned-artifact
+        with:
+          name: unsigned-snake-win32-x64
   stage:
     needs:
       - prepare

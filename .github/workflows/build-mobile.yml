@@ -183,6 +183,9 @@ jobs:
           retention-days: 14
   sign:
     name: Sign ${{ matrix.platform }}
+    permissions:
+      contents: read
+      actions: write
     needs:
       - source
       - build
@@ -258,6 +261,10 @@ jobs:
             dist/${{ matrix.platform }}/build-metadata.json
           if-no-files-found: error
           retention-days: 14
+      - name: Delete unsigned build
+        uses: ./.github/actions/delete-unsigned-artifact
+        with:
+          name: unsigned-mobile-${{ matrix.platform }}
       - name: Upload signing logs
         if: ${{ failure() }}
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02

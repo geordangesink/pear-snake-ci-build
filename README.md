@@ -16,13 +16,15 @@ Start builds from **Actions**. Builds and checks use `geordangesink/snake` and `
 
 Desktop supports Linux and macOS x64/arm64, plus Windows x64. Select the platforms to build; all default to off. Windows signing requires a dedicated `windows-signer` runner.
 
-See [releasing mobile](RELEASING.md) for the `native`, `updates`, and `publish` modes, credentials, and automatic build numbering. Mobile app identifiers come from `app.json`. Unsigned build artifacts are retained for 1 day; signed mobile artifacts and reports for 14 days. Desktop release and staging artifacts use the repository retention setting.
+See [releasing mobile](RELEASING.md) for the `native`, `updates`, and `publish` modes, credentials, and automatic build numbering. Mobile app identifiers come from `app.json`. Unsigned build artifacts are deleted after signed outputs are uploaded; otherwise they expire after 1 day. Signed mobile artifacts and reports are retained for 14 days. Desktop release and staging artifacts use the repository retention setting.
+
+After unsigned artifacts are deleted, rerunning signing requires rebuilding first.
 
 ## Repository setup
 
 Keep secrets only in this repository's protected `release` environment. Remove repository-level duplicates and exclude this repository from organization-level copies of those credentials. Optional variables can be set at repository or environment scope. Source repositories must be public.
 
-App scripts and configuration run on hosted build and test runners without release credentials. Desktop compilation uses `geordangesink/actions/make-pear-app@optional-sign` with the app's Forge commands, `signed: false` on macOS and Windows, and no signing inputs. Signing, staging, and publishing run separately using CI-owned scripts and trusted tools; they consume the built artifacts without executing app code. `windows-signer` is reserved for signing.
+App scripts and configuration run on hosted build and test runners without release credentials. Desktop compilation uses `holepunchto/actions/make-pear-app@v1` with the app's Forge commands, `signed: false` on macOS and Windows, and no signing inputs. Signing, staging, and publishing run separately using CI-owned scripts and trusted tools; they consume the built artifacts without executing app code. `windows-signer` is reserved for signing.
 
 ### Pear staging
 
